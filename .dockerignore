@@ -1,0 +1,68 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# 가상환경
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 로그
+logs/
+*.log
+
+# 데이터베이스
+*.db
+*.sqlite
+
+# 환경 변수
+.env
+.env.local
+
+# 시스템 파일
+.DS_Store
+Thumbs.db
+
+# 출력 파일
+*.json
+*.txt
+*.csv
+*.xlsx
+
+# Git
+.git/
+.gitignore
+
+# Docker
+.dockerignore
+
+# 캐시
+.cache/
+*.cache
+
+# Playwright
+.playwright/

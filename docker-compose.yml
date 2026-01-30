@@ -1,0 +1,69 @@
+version: '3.8'
+
+services:
+  recommandai:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: recommandai
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TZ=Asia/Seoul
+      # 아래 환경 변수는 .env 파일이나 docker-compose 실행 시 설정
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - NAVER_CLIENT_ID=${NAVER_CLIENT_ID}
+      - NAVER_CLIENT_SECRET=${NAVER_CLIENT_SECRET}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - MARIADB_HOST=${MARIADB_HOST:-mariadb}
+      - MARIADB_PORT=${MARIADB_PORT:-3306}
+      - MARIADB_DATABASE=${MARIADB_DATABASE:-recommand_stock}
+      - MARIADB_USER=${MARIADB_USER:-root}
+      - MARIADB_PASSWORD=${MARIADB_PASSWORD}
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+      - ./output:/app/output
+    depends_on:
+      - mariadb
+      - redis
+    networks:
+      - recommand-network
+
+  mariadb:
+    image: mariadb:11
+    container_name: recommandai-mariadb
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MARIADB_PASSWORD:-rootpassword}
+      - MYSQL_DATABASE=recommand_stock
+      - TZ=Asia/Seoul
+    volumes:
+      - mariadb-data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "3306:3306"
+    networks:
+      - recommand-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: recommandai-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - recommand-network
+
+volumes:
+  mariadb-data:
+  redis-data:
+
+networks:
+  recommand-network:
+    driver: bridge

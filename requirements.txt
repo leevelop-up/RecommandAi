@@ -1,0 +1,44 @@
+# 웹 스크래핑
+requests==2.31.0
+beautifulsoup4==4.12.3
+selenium==4.18.1
+playwright==1.41.2
+
+# 한국 주식 데이터
+pykrx==1.0.45
+finance-datareader==0.9.66
+
+# 미국 주식 데이터
+yfinance==0.2.36
+alpha-vantage==2.3.1
+
+# 데이터 처리
+pandas==2.2.0
+numpy==1.26.4
+
+# 벡터화 / AI
+openai==1.12.0
+langchain==0.1.9
+chromadb==0.4.22
+sentence-transformers==2.3.1
+
+# 데이터베이스
+pymysql==1.1.0
+redis==5.0.1
+sqlalchemy==2.0.25
+
+# 비동기 처리
+aiohttp==3.9.3
+asyncio-throttle==1.0.2
+
+# 스케줄링
+apscheduler==3.10.4
+
+# 환경설정
+python-dotenv==1.0.1
+pydantic==2.6.1
+pydantic-settings==2.1.0
+
+# 유틸리티
+loguru==0.7.2
+tqdm==4.66.2

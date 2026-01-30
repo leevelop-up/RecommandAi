@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# 로그
+logs/
+*.log
+
+# 환경 변수
+.env
+.env.local
+
+# 출력 파일
+*.json
+*.txt
+*.csv
+*.xlsx
+!requirements.txt
+!FEATURES.txt
+
+# 데이터베이스
+*.db
+*.sqlite
+
+# 캐시
+.cache/
+*.cache
+.playwright/
