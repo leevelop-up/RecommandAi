@@ -9,14 +9,18 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
+    - name: Setup SSH key
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.NAS_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+        chmod 600 ~/.ssh/deploy_key
+        ssh-keyscan -H ${{ secrets.NAS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+    
     - name: Deploy to NAS
-      uses: appleboy/ssh-action@v1.0.0
-      with:
-        host: ${{ secrets.NAS_HOST }}
-        username: ${{ secrets.NAS_USERNAME }}
-        key: ${{ secrets.NAS_SSH_KEY }}
-        port: ${{ secrets.NAS_PORT }}
-        script: |
-          cd /volume1/docker/RecommandAi
-          sudo git pull origin main
-          sudo docker-compose up -d --build
+      run: |
+        ssh -i ~/.ssh/deploy_key -p ${{ secrets.NAS_PORT }} ${{ secrets.NAS_USERNAME }}@${{ secrets.NAS_HOST }} << 'EOF'
+        cd /volume1/docker/RecommandAi
+        git pull origin main
+        docker-compose up -d --build
+        echo "✅ 배포 완료!"
+        EOF
