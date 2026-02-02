@@ -84,14 +84,20 @@ class YahooFinanceScraper:
                 "market_cap": info.get("marketCap", 0),
                 "fifty_two_week_high": info.get("fiftyTwoWeekHigh", 0),
                 "fifty_two_week_low": info.get("fiftyTwoWeekLow", 0),
+                # 펀더멘탈 데이터 추가
+                "pe_ratio": info.get("trailingPE", 0),
+                "forward_pe": info.get("forwardPE", 0),
+                "dividend_yield": info.get("dividendYield", 0),
+                "sector": info.get("sector", ""),
+                "industry": info.get("industry", ""),
             }
 
             # 변동률 계산
             if result["previous_close"] and result["current_price"]:
                 change = result["current_price"] - result["previous_close"]
-                change_rate = (change / result["previous_close"]) * 100
+                change_percent = (change / result["previous_close"]) * 100
                 result["change"] = round(change, 2)
-                result["change_rate"] = round(change_rate, 2)
+                result["change_percent"] = round(change_percent, 2)
 
             logger.info(f"{ticker} 현재가 조회 완료")
             return result

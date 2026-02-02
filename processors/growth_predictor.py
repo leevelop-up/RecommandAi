@@ -6,7 +6,7 @@
 - 테마 수혜 종목
 - 거래량 급증 종목
 - 저평가 반등 후보
-- AI 예측 (Gemini)
+- AI 예측 (Gemini/Groq)
 """
 import sys
 import os
@@ -18,13 +18,26 @@ from datetime import datetime
 from loguru import logger
 
 from processors.gemini_client import GeminiClient
+from processors.groq_client import GroqClient
+from processors.xai_client import XAIClient
 
 
 class GrowthPredictor:
     """급등 예측 엔진"""
 
-    def __init__(self, api_key: Optional[str] = None):
-        self.gemini = GeminiClient(api_key=api_key)
+    def __init__(self, api_key: Optional[str] = None, engine: str = "gemini"):
+        self.engine_name = engine.lower()
+
+        if self.engine_name == "xai" or self.engine_name == "grok":
+            logger.info("[급등 예측] AI 엔진: xAI Grok")
+            self.ai_client = XAIClient(api_key=api_key)
+            self.engine_name = "xai"
+        elif self.engine_name == "groq":
+            logger.info("[급등 예측] AI 엔진: Groq")
+            self.ai_client = GroqClient(api_key=api_key)
+        else:
+            logger.info("[급등 예측] AI 엔진: Gemini")
+            self.ai_client = GeminiClient(api_key=api_key)
 
     def predict(self, data: Dict) -> Dict:
         """급등 후보 종목 예측"""
@@ -37,7 +50,7 @@ class GrowthPredictor:
 
         # 2. AI 예측 (가능 시)
         ai_prediction = None
-        if self.gemini.is_available():
+        if self.ai_client.is_available():
             ai_prediction = self._ai_predict(data, kr_candidates, us_candidates, theme_plays)
 
         # 3. 결과 조립
@@ -296,7 +309,7 @@ class GrowthPredictor:
             "투자 위험 고지를 반드시 포함하세요."
         )
 
-        result = self.gemini.generate_json(prompt, system_instruction=system)
+        result = self.ai_client.generate_json(prompt, system_instruction=system)
         if result:
             logger.info("[급등 예측] AI 분석 완료")
         else:

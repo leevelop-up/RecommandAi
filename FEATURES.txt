@@ -1,0 +1,134 @@
+# RecommandAi ↔ RecommandStock 연결 완료!
+
+## ✅ 완료된 작업
+
+### 1. 백엔드 (RecommandAi)
+✅ FastAPI 서버 구축
+✅ 실시간 가격 수집 모듈
+✅ 데이터 변환 유틸리티
+✅ 종목 마스터 데이터 (30개)
+✅ API 엔드포인트 (추천/급등/테마/뉴스)
+✅ DB 호환 JSON 스키마
+✅ CORS 설정
+
+### 2. 프론트엔드 (RecommandStock)
+✅ TypeScript 인터페이스 정의
+✅ API 서비스 레이어
+✅ HomePage API 연동
+✅ 로딩/에러 처리
+✅ Mock 데이터 Fallback
+
+### 3. DB 준비
+✅ SQL 스키마 정의 (db/schema.sql)
+✅ JSON → DB 호환 구조
+
+## 🚀 실행 방법
+
+### Step 1: AI 데이터 생성 (RecommandAi)
+cd /Users/lee/Documents/GitHub/RecommandAi
+python run_ai_recommendation.py --predict
+python collect_comprehensive_news.py --market
+
+### Step 2: API 서버 시작 (RecommandAi)
+./start_api.sh
+# 서버: http://localhost:8000
+# 문서: http://localhost:8000/docs
+
+### Step 3: Frontend 시작 (RecommandStock)
+cd /Users/lee/Documents/GitHub/RecommandStock
+npm run dev
+# 서버: http://localhost:5173
+
+## 📊 데이터 흐름
+
+1. [AI 분석] Python → JSON 파일 생성 (output/)
+2. [API 요청] React → FastAPI 호출
+3. [가격 추가] FastAPI → Naver/Yahoo Finance 실시간 가격
+4. [형식 변환] FastAPI → Stock 인터페이스 변환
+5. [응답] React → 화면 렌더링
+
+## 🗄️ 미래 DB 작업
+
+현재 JSON 파일 구조가 DB 스키마와 완전히 호환됩니다.
+
+### DB 저장 시 작업
+1. MariaDB/PostgreSQL 설치
+2. db/schema.sql 실행
+3. JSON → DB 저장 스크립트 작성
+4. API 수정: JSON 파일 → DB 쿼리
+
+### JSON → DB 저장 예시
+```python
+# 추천 결과 DB 저장
+def save_recommendation_to_db(ai_result: Dict):
+    # 1. ai_recommendations 테이블에 메타 정보 저장
+    rec_id = db.insert_recommendation(
+        generated_at=ai_result['generated_at'],
+        engine=ai_result['engine'],
+        ...
+    )
+    
+    # 2. recommendation_stocks 테이블에 종목 저장
+    for stock in ai_result['recommendations']['korea']:
+        db.insert_recommendation_stock(
+            recommendation_id=rec_id,
+            ticker=stock['ticker'],
+            price=stock['price'],
+            score=stock['score'],
+            ...
+        )
+```
+
+## 📝 파일 구조
+
+RecommandAi/
+├── api/                          # FastAPI 서버
+│   ├── main.py                   # 메인 서버
+│   ├── recommendations.py        # 추천 API
+│   ├── themes.py                 # 테마 API
+│   └── news.py                   # 뉴스 API
+├── processors/
+│   └── price_enricher.py         # 실시간 가격
+├── utils/
+│   └── data_transformer.py       # 데이터 변환
+├── data/
+│   └── stock_master.json         # 종목 마스터
+├── db/
+│   └── schema.sql                # DB 스키마
+└── output/                       # JSON 파일
+
+RecommandStock/
+├── src/app/
+│   ├── types/
+│   │   └── api.ts                # API 타입 정의
+│   ├── services/
+│   │   └── api.ts                # API 호출 함수
+│   ├── pages/
+│   │   └── HomePage.tsx          # API 연동 완료
+│   └── components/
+└── .env                          # API URL 설정
+
+## 🔗 API 엔드포인트
+
+GET /api/recommendations/today    # 오늘의 추천
+GET /api/recommendations/growth   # 급등 예측
+GET /api/themes                   # 테마 목록
+GET /api/themes/hot               # 급등 테마
+GET /api/news/market              # 시장 뉴스
+GET /api/news/stock/{ticker}      # 종목 뉴스
+
+## ⚡ 성능 최적화 (향후)
+
+1. Redis 캐싱: 실시간 가격 캐싱
+2. DB 인덱싱: ticker, generated_at
+3. CDN: 정적 파일 서빙
+4. Nginx: 리버스 프록시
+5. Docker: 컨테이너화
+
+## 🎯 다음 단계
+
+1. StocksListPage, ThemeListPage API 연동
+2. DB 저장 스크립트 작성
+3. 사용자 인증 (포트폴리오/관심종목)
+4. 실시간 알림
+5. 프로덕션 배포

@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RecommandStock - AI 주식 추천</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 400px;
+            width: 90%;
+        }
+
+        h1 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .user-info {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .user-info.active {
+            display: block;
+        }
+
+        .user-info h3 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 18px;
+        }
+
+        .user-info p {
+            color: #666;
+            margin: 5px 0;
+            font-size: 14px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            margin-top: 10px;
+        }
+
+        .btn-logout {
+            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+        }
+
+        .links {
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        .links a {
+            color: #667eea;
+            text-decoration: none;
+            font-size: 14px;
+            margin: 0 10px;
+        }
+
+        .links a:hover {
+            text-decoration: underline;
+        }
+
+        .message {
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .message.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            display: block;
+        }
+
+        .message.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            display: block;
+        }
+
+        .logged-in-section {
+            display: none;
+        }
+
+        .logged-in-section.active {
+            display: block;
+        }
+
+        .login-section.hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <h1 style="margin: 0;">📈 RecommandStock</h1>
+            <div id="userIconNav" style="display: none; cursor: pointer; font-size: 32px;" onclick="location.href='mypage.html'" title="마이페이지로 이동">👤</div>
+        </div>
+        <p class="subtitle">AI 기반 주식 추천 서비스</p>
+
+        <div id="message" class="message"></div>
+
+        <!-- 로그인 전 -->
+        <div id="loginSection" class="login-section">
+            <form id="loginForm">
+                <div class="form-group">
+                    <label for="username">아이디</label>
+                    <input type="text" id="username" placeholder="아이디를 입력하세요" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">비밀번호</label>
+                    <input type="password" id="password" placeholder="비밀번호를 입력하세요" required>
+                </div>
+                <button type="submit">로그인</button>
+            </form>
+            <div class="links">
+                <a href="#" id="quickLoginBtn">빠른 로그인 (테스트)</a>
+            </div>
+        </div>
+
+        <!-- 로그인 후 -->
+        <div id="loggedInSection" class="logged-in-section">
+            <div class="user-info active">
+                <h3>👤 로그인 정보</h3>
+                <p><strong>아이디:</strong> <span id="displayUsername"></span></p>
+                <p><strong>등급:</strong> <span id="displayGrade">Premium</span></p>
+                <p><strong>로그인 시간:</strong> <span id="displayLoginTime"></span></p>
+            </div>
+
+            <button onclick="location.href='mypage.html'" class="btn-secondary">
+                마이페이지
+            </button>
+            <button onclick="location.href='recommendations.html'" class="btn-secondary">
+                추천 종목 보기
+            </button>
+            <button onclick="logout()" class="btn-logout">
+                로그아웃
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // 페이지 로드 시 로그인 상태 확인
+        window.addEventListener('DOMContentLoaded', function() {
+            checkLoginStatus();
+        });
+
+        // 로그인 상태 확인
+        function checkLoginStatus() {
+            const user = localStorage.getItem('user');
+            const loginSection = document.getElementById('loginSection');
+            const loggedInSection = document.getElementById('loggedInSection');
+            const userIconNav = document.getElementById('userIconNav');
+
+            if (user) {
+                const userData = JSON.parse(user);
+                loginSection.classList.add('hidden');
+                loggedInSection.classList.add('active');
+                userIconNav.style.display = 'block';
+
+                document.getElementById('displayUsername').textContent = userData.username;
+                document.getElementById('displayLoginTime').textContent = userData.loginTime;
+            } else {
+                loginSection.classList.remove('hidden');
+                loggedInSection.classList.remove('active');
+                userIconNav.style.display = 'none';
+            }
+        }
+
+        // 로그인 폼 제출
+        document.getElementById('loginForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            login();
+        });
+
+        // 빠른 로그인 버튼
+        document.getElementById('quickLoginBtn').addEventListener('click', function(e) {
+            e.preventDefault();
+            document.getElementById('username').value = 'testuser';
+            document.getElementById('password').value = 'test1234';
+            login();
+        });
+
+        // 로그인 처리 (Mock)
+        function login() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            // Mock 로그인 - 어떤 아이디/비밀번호든 로그인 성공
+            const userData = {
+                username: username,
+                grade: 'Premium',
+                loginTime: new Date().toLocaleString('ko-KR'),
+                isLoggedIn: true
+            };
+
+            // localStorage에 저장
+            localStorage.setItem('user', JSON.stringify(userData));
+
+            // 성공 메시지
+            showMessage('로그인 성공! 환영합니다.', 'success');
+
+            // 1초 후 화면 전환
+            setTimeout(() => {
+                checkLoginStatus();
+                document.getElementById('message').style.display = 'none';
+            }, 1000);
+        }
+
+        // 로그아웃
+        function logout() {
+            localStorage.removeItem('user');
+            showMessage('로그아웃 되었습니다.', 'success');
+
+            setTimeout(() => {
+                checkLoginStatus();
+                document.getElementById('loginForm').reset();
+                document.getElementById('message').style.display = 'none';
+            }, 1000);
+        }
+
+        // 메시지 표시
+        function showMessage(msg, type) {
+            const messageEl = document.getElementById('message');
+            messageEl.textContent = msg;
+            messageEl.className = 'message ' + type;
+            messageEl.style.display = 'block';
+        }
+    </script>
+</body>
+</html>

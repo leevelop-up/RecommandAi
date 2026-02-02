@@ -246,10 +246,10 @@ class NaverFinanceScraper:
 
         try:
             results = []
-            table = soup.select_one(".type_2 table")
+            table = soup.select_one("table.type_2")
             if table:
-                rows = table.select("tbody tr")
-                for row in rows[:20]:  # 상위 20개
+                rows = table.select("tr")
+                for row in rows:
                     cols = row.select("td")
                     if len(cols) >= 10:
                         link = cols[1].select_one("a")
@@ -257,17 +257,25 @@ class NaverFinanceScraper:
                             href = link.get("href", "")
                             ticker_match = re.search(r"code=(\d+)", href)
                             if ticker_match:
+                                name = link.text.strip()
+                                # ETN, ETF, 스팩 제외
+                                if any(x in name.upper() for x in ["ETN", "ETF", "SPAC", "스팩"]):
+                                    continue
+
                                 results.append(
                                     {
                                         "rank": len(results) + 1,
                                         "ticker": ticker_match.group(1),
-                                        "name": link.text.strip(),
+                                        "name": name,
                                         "current_price": cols[2].text.strip().replace(",", ""),
                                         "change": cols[3].text.strip().replace(",", ""),
                                         "change_rate": cols[4].text.strip(),
                                         "volume": cols[5].text.strip().replace(",", ""),
                                     }
                                 )
+
+                                if len(results) >= 20:
+                                    break
 
             logger.info(f"{market} {category} 상위 종목 조회 완료: {len(results)}개")
             return results

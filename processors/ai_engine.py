@@ -1,5 +1,5 @@
 """
-AI 추천 엔진 - Gemini AI + 규칙 기반 fallback 오케스트레이터
+AI 추천 엔진 - Gemini/Groq AI + 규칙 기반 fallback 오케스트레이터
 """
 import sys
 import os
@@ -10,18 +10,41 @@ from datetime import datetime
 from loguru import logger
 
 from processors.gemini_client import GeminiClient
+from processors.groq_client import GroqClient
+from processors.xai_client import XAIClient
 from processors.enhanced_rules import EnhancedRuleEngine
 from processors import prompt_builder
 
 
 class AIRecommendationEngine:
-    """AI 추천 엔진 (Gemini + Rule-based fallback)"""
+    """AI 추천 엔진 (Gemini/Groq/xAI + Rule-based fallback)"""
 
-    def __init__(self, api_key: Optional[str] = None, force_rule: bool = False):
-        self.gemini = GeminiClient(api_key=api_key)
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        force_rule: bool = False,
+        engine: str = "gemini"
+    ):
+        self.engine_name = engine.lower()
         self.rule_engine = EnhancedRuleEngine()
         self.force_rule = force_rule
         self.engine_used = "unknown"
+
+        # AI 클라이언트 초기화
+        if self.engine_name == "xai" or self.engine_name == "grok":
+            logger.info("AI 엔진: xAI Grok 2")
+            self.ai_client = XAIClient(api_key=api_key)
+            self.engine_name = "xai"
+        elif self.engine_name == "groq":
+            logger.info("AI 엔진: Groq (llama-3.3-70b)")
+            self.ai_client = GroqClient(api_key=api_key)
+        elif self.engine_name == "gemini":
+            logger.info("AI 엔진: Gemini 2.0 Flash")
+            self.ai_client = GeminiClient(api_key=api_key)
+        else:
+            logger.warning(f"알 수 없는 엔진 '{engine}', Gemini로 대체")
+            self.ai_client = GeminiClient(api_key=api_key)
+            self.engine_name = "gemini"
 
     def analyze(self, data: Dict) -> Dict:
         """
@@ -30,7 +53,7 @@ class AIRecommendationEngine:
         Returns:
             {
                 "generated_at": str,
-                "engine": "gemini" | "rule_based" | "hybrid",
+                "engine": "gemini" | "groq" | "rule_based" | "hybrid",
                 "market_overview": {...},
                 "recommendations": {"korea": [...], "usa": [...]},
                 "sector_analysis": [...],
@@ -39,14 +62,14 @@ class AIRecommendationEngine:
                 "avoid_list": [...]
             }
         """
-        if self.force_rule or not self.gemini.is_available():
+        if self.force_rule or not self.ai_client.is_available():
             if not self.force_rule:
-                logger.info("Gemini API 키 미설정 → 규칙 기반 분석 모드")
+                logger.info(f"{self.engine_name.upper()} API 키 미설정 → 규칙 기반 분석 모드")
             else:
                 logger.info("규칙 기반 분석 모드 (강제)")
             return self._rule_based_analysis(data)
 
-        logger.info("Gemini AI 분석 모드")
+        logger.info(f"{self.engine_name.upper()} AI 분석 모드")
         result = self._ai_analysis(data)
 
         if result is None:
@@ -56,47 +79,47 @@ class AIRecommendationEngine:
         return result
 
     def _ai_analysis(self, data: Dict) -> Optional[Dict]:
-        """Gemini AI 4단계 분석"""
+        """AI 4단계 분석 (Gemini/Groq)"""
         system = prompt_builder.SYSTEM_INSTRUCTION
         results = {}
 
         # Step 1: 한국 종목 분석
         logger.info("[AI 1/4] 한국 종목 분석 중...")
         kr_prompt = prompt_builder.build_korea_stock_prompt(data)
-        kr_result = self.gemini.generate_json(kr_prompt, system_instruction=system)
+        kr_result = self.ai_client.generate_json(kr_prompt, system_instruction=system)
 
         if kr_result is None:
             logger.warning("한국 종목 AI 분석 실패")
             kr_result = self._rule_korea_fallback(data)
             results["kr_engine"] = "rule"
         else:
-            results["kr_engine"] = "gemini"
+            results["kr_engine"] = self.engine_name
         results["korea"] = kr_result
 
         # Step 2: 미국 종목 분석
         logger.info("[AI 2/4] 미국 종목 분석 중...")
         us_prompt = prompt_builder.build_usa_stock_prompt(data)
-        us_result = self.gemini.generate_json(us_prompt, system_instruction=system)
+        us_result = self.ai_client.generate_json(us_prompt, system_instruction=system)
 
         if us_result is None:
             logger.warning("미국 종목 AI 분석 실패")
             us_result = self._rule_usa_fallback(data)
             results["us_engine"] = "rule"
         else:
-            results["us_engine"] = "gemini"
+            results["us_engine"] = self.engine_name
         results["usa"] = us_result
 
         # Step 3: 섹터/테마 분석
         logger.info("[AI 3/4] 섹터/테마 분석 중...")
         sec_prompt = prompt_builder.build_sector_theme_prompt(data)
-        sec_result = self.gemini.generate_json(sec_prompt, system_instruction=system)
+        sec_result = self.ai_client.generate_json(sec_prompt, system_instruction=system)
 
         if sec_result is None:
             logger.warning("섹터 분석 AI 실패, 규칙 기반 대체")
             sec_result = self._rule_sector_fallback(data)
             results["sec_engine"] = "rule"
         else:
-            results["sec_engine"] = "gemini"
+            results["sec_engine"] = self.engine_name
         results["sector"] = sec_result
 
         # Step 4: 종합 TOP10
@@ -104,24 +127,24 @@ class AIRecommendationEngine:
         top_prompt = prompt_builder.build_top_picks_prompt(
             kr_result, us_result, sec_result
         )
-        top_result = self.gemini.generate_json(top_prompt, system_instruction=system)
+        top_result = self.ai_client.generate_json(top_prompt, system_instruction=system)
 
         if top_result is None:
             logger.warning("TOP10 AI 실패, 스코어 기반 대체")
             top_result = self._build_top_picks_from_scores(kr_result, us_result)
             results["top_engine"] = "rule"
         else:
-            results["top_engine"] = "gemini"
+            results["top_engine"] = self.engine_name
 
         # 엔진 판별
         engines = [results.get("kr_engine"), results.get("us_engine"),
                     results.get("sec_engine"), results.get("top_engine")]
-        if all(e == "gemini" for e in engines):
-            self.engine_used = "gemini"
+        if all(e == self.engine_name for e in engines):
+            self.engine_used = self.engine_name
         elif all(e == "rule" for e in engines):
             self.engine_used = "rule_based"
         else:
-            self.engine_used = "hybrid"
+            self.engine_used = f"hybrid_{self.engine_name}"
 
         return self._assemble_result(
             kr_result, us_result, sec_result, top_result
@@ -135,9 +158,18 @@ class AIRecommendationEngine:
     def _rule_korea_fallback(self, data: Dict) -> Dict:
         """한국 종목 규칙 기반 fallback"""
         stocks = data.get("korea_stocks", [])
+
+        # 시장 컨텍스트 생성
+        indices = data.get("market_indices", {})
+        kospi = indices.get("KOSPI", {})
+        market_ctx = {
+            "korea_change": kospi.get("change", 0),
+            "korea_change_rate": kospi.get("change_rate", 0),
+        }
+
         recs = []
         for s in stocks:
-            result = self.rule_engine.analyze_korea_stock(s)
+            result = self.rule_engine.analyze_korea_stock(s, market_ctx)
             recs.append(result)
         return {
             "market_summary": "AI 분석 불가, 규칙 기반 분석 결과",
@@ -148,9 +180,18 @@ class AIRecommendationEngine:
     def _rule_usa_fallback(self, data: Dict) -> Dict:
         """미국 종목 규칙 기반 fallback"""
         stocks = data.get("usa_stocks", [])
+
+        # 시장 컨텍스트 생성
+        indices = data.get("market_indices", {})
+        sp500 = indices.get("S&P 500", {})
+        market_ctx = {
+            "usa_change": sp500.get("change", 0),
+            "usa_change_rate": sp500.get("change_rate", 0),
+        }
+
         recs = []
         for s in stocks:
-            result = self.rule_engine.analyze_usa_stock(s)
+            result = self.rule_engine.analyze_usa_stock(s, market_ctx)
             recs.append(result)
         return {
             "market_summary": "AI 분석 불가, 규칙 기반 분석 결과",

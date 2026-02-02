@@ -80,11 +80,30 @@ class DataAggregator:
         return {"korea": korea, "usa": usa}
 
     def collect_korea_stocks(self) -> List[Dict]:
-        """한국 종목 데이터 수집"""
-        logger.info(f"한국 종목 수집 중 ({len(self.KOREA_WATCHLIST)}개)...")
-        stocks = []
+        """한국 종목 데이터 수집 (기본 종목 + 동적 급등/거래량 상위)"""
+        # 1. 동적 종목 수집
+        dynamic_stocks = self._collect_dynamic_korea_stocks()
 
+        # 2. 기본 WATCHLIST와 합치기
+        all_tickers = set()
+        ticker_name_map = {}
+
+        # 기본 종목 추가
         for ticker, name in self.KOREA_WATCHLIST:
+            all_tickers.add(ticker)
+            ticker_name_map[ticker] = name
+
+        # 동적 종목 추가
+        for ticker, name in dynamic_stocks:
+            all_tickers.add(ticker)
+            ticker_name_map[ticker] = name
+
+        logger.info(f"한국 종목 수집 중 (총 {len(all_tickers)}개 - 기본 {len(self.KOREA_WATCHLIST)}개 + 동적 {len(dynamic_stocks)}개)...")
+
+        # 3. 각 종목 데이터 수집
+        stocks = []
+        for ticker in all_tickers:
+            name = ticker_name_map[ticker]
             logger.debug(f"  {name}({ticker}) 수집")
             price = _safe(lambda t=ticker: self.naver.get_realtime_price(t), {})
             fund = _safe(lambda t=ticker: self.krx.get_fundamental(t), {})
@@ -100,6 +119,27 @@ class DataAggregator:
             })
 
         return stocks
+
+    def _collect_dynamic_korea_stocks(self) -> List[Tuple[str, str]]:
+        """동적 급등/거래량 상위 종목 수집"""
+        dynamic_stocks = []
+
+        # 거래량 상위 (KOSPI 10개 + KOSDAQ 10개)
+        kospi_volume = _safe(lambda: self.naver.get_top_stocks("KOSPI", "volume"), [])
+        kosdaq_volume = _safe(lambda: self.naver.get_top_stocks("KOSDAQ", "volume"), [])
+
+        for stock in (kospi_volume[:10] + kosdaq_volume[:10]):
+            dynamic_stocks.append((stock["ticker"], stock["name"]))
+
+        # 상승률 상위 (KOSPI 10개 + KOSDAQ 10개)
+        kospi_rise = _safe(lambda: self.naver.get_top_stocks("KOSPI", "rise"), [])
+        kosdaq_rise = _safe(lambda: self.naver.get_top_stocks("KOSDAQ", "rise"), [])
+
+        for stock in (kospi_rise[:10] + kosdaq_rise[:10]):
+            dynamic_stocks.append((stock["ticker"], stock["name"]))
+
+        logger.info(f"동적 종목 수집 완료: 거래량 상위 20개 + 상승률 상위 20개")
+        return dynamic_stocks
 
     def collect_usa_stocks(self) -> List[Dict]:
         """미국 종목 데이터 수집"""

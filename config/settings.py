@@ -30,6 +30,15 @@ class Settings(BaseSettings):
     # Google Gemini API (AI 추천용 - Free tier)
     GEMINI_API_KEY: Optional[str] = Field(default=None)
 
+    # xAI (Grok) API
+    XAI_API_KEY: Optional[str] = Field(default=None)
+
+    # Groq API (초고속 무료 AI)
+    GROQ_API_KEY: Optional[str] = Field(default=None)
+
+    # AI 엔진 선택 (gemini, xai, groq)
+    AI_ENGINE: str = Field(default="gemini", description="AI 엔진 선택: gemini, xai(grok), 또는 groq")
+
     # Alpha Vantage API (미국 주식)
     ALPHA_VANTAGE_API_KEY: Optional[str] = Field(default=None)
 
