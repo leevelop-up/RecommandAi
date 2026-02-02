@@ -14,11 +14,19 @@ jobs:
         mkdir -p ~/.ssh
         echo "${{ secrets.NAS_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
         chmod 600 ~/.ssh/deploy_key
-        ssh-keyscan -H ${{ secrets.NAS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+        cat >> ~/.ssh/config << SSHCONFIG
+        Host nas
+          HostName ${{ secrets.NAS_HOST }}
+          User ${{ secrets.NAS_USERNAME }}
+          Port ${{ secrets.NAS_PORT }}
+          IdentityFile ~/.ssh/deploy_key
+          StrictHostKeyChecking accept-new
+          UserKnownHostsFile ~/.ssh/known_hosts
+        SSHCONFIG
     
     - name: Deploy to NAS
       run: |
-        ssh -i ~/.ssh/deploy_key -p ${{ secrets.NAS_PORT }} ${{ secrets.NAS_USERNAME }}@${{ secrets.NAS_HOST }} << 'EOF'
+        ssh -v nas << 'EOF'
         cd /volume1/docker/RecommandAi
         git pull origin main
         docker-compose up -d --build
