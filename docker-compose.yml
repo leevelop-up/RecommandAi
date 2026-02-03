@@ -26,25 +26,10 @@ services:
       - ./logs:/app/logs
       - ./data:/app/data
       - ./output:/app/output
-    depends_on:
-      - mariadb
-      - redis
-    networks:
-      - recommand-network
-
-  mariadb:
-    image: mariadb:11
-    container_name: recommandai-mariadb
-    restart: unless-stopped
-    environment:
-      - MYSQL_ROOT_PASSWORD=${MARIADB_PASSWORD:-rootpassword}
-      - MYSQL_DATABASE=recommand_stock
-      - TZ=Asia/Seoul
-    volumes:
-      - mariadb-data:/var/lib/mysql
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     ports:
-      - "3306:3306"
+      - "8001:8000"
+    depends_on:
+      - redis
     networks:
       - recommand-network
 
@@ -52,16 +37,17 @@ services:
     image: redis:7-alpine
     container_name: recommandai-redis
     restart: unless-stopped
-    command: redis-server --appendonly yes
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-cpz8377!@#} --bind 0.0.0.0 --protected-mode no
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-cpz8377!@#}
     volumes:
       - redis-data:/data
     ports:
-      - "6379:6379"
+      - "0.0.0.0:6380:6379"
     networks:
       - recommand-network
 
 volumes:
-  mariadb-data:
   redis-data:
 
 networks:
