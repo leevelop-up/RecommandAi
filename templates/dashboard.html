@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RecommandAi 웹 대시보드</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            margin-bottom: 20px;
+        }
+
+        .header h1 {
+            color: #667eea;
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .control-panel {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            margin-bottom: 20px;
+        }
+
+        .control-panel h2 {
+            color: #333;
+            font-size: 20px;
+            margin-bottom: 20px;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 7px 20px rgba(102, 126, 234, 0.6);
+        }
+
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .status-box {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+            display: none;
+        }
+
+        .status-box.show {
+            display: block;
+        }
+
+        .status-box.running {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+        }
+
+        .status-box.completed {
+            background: #d4edda;
+            border-left: 4px solid #28a745;
+        }
+
+        .status-box.error {
+            background: #f8d7da;
+            border-left: 4px solid #dc3545;
+        }
+
+        .results-section {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        .results-section h2 {
+            color: #333;
+            font-size: 20px;
+            margin-bottom: 20px;
+        }
+
+        .result-item {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .result-info {
+            flex: 1;
+        }
+
+        .result-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .result-meta {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .result-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-small {
+            padding: 8px 15px;
+            font-size: 14px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-small:hover {
+            background: #5568d3;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-left: 10px;
+        }
+
+        .badge-json {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+
+        .badge-txt {
+            background: #f3e5f5;
+            color: #7b1fa2;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 RecommandAi 웹 대시보드</h1>
+            <p>금주 주식 추천 시스템 - 웹 인터페이스</p>
+        </div>
+
+        <div class="control-panel">
+            <h2>🚀 추천 실행</h2>
+            <button id="runBtn" class="btn" onclick="runWeeklyRecommendation()">
+                금주 추천 실행하기
+            </button>
+
+            <div id="statusBox" class="status-box">
+                <div id="statusMessage"></div>
+            </div>
+        </div>
+
+        <div class="results-section">
+            <h2>📁 생성된 결과 파일</h2>
+            <div id="resultsList">
+                <div class="empty-state">결과 파일을 불러오는 중...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let statusCheckInterval = null;
+
+        // 페이지 로드 시 결과 목록 불러오기
+        window.addEventListener('DOMContentLoaded', () => {
+            loadResults();
+            checkStatus();
+        });
+
+        // 금주 추천 실행
+        async function runWeeklyRecommendation() {
+            const btn = document.getElementById('runBtn');
+            const statusBox = document.getElementById('statusBox');
+            const statusMessage = document.getElementById('statusMessage');
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span>실행 중...';
+
+            try {
+                const response = await fetch('/api/run-weekly', {
+                    method: 'POST'
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    statusBox.className = 'status-box show running';
+                    statusMessage.textContent = data.message;
+
+                    // 상태 체크 시작
+                    startStatusCheck();
+                } else {
+                    throw new Error(data.detail || '실행 실패');
+                }
+            } catch (error) {
+                statusBox.className = 'status-box show error';
+                statusMessage.textContent = '오류: ' + error.message;
+                btn.disabled = false;
+                btn.textContent = '금주 추천 실행하기';
+            }
+        }
+
+        // 상태 체크 시작
+        function startStatusCheck() {
+            if (statusCheckInterval) {
+                clearInterval(statusCheckInterval);
+            }
+
+            statusCheckInterval = setInterval(checkStatus, 2000);
+        }
+
+        // 상태 확인
+        async function checkStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const status = await response.json();
+
+                const btn = document.getElementById('runBtn');
+                const statusBox = document.getElementById('statusBox');
+                const statusMessage = document.getElementById('statusMessage');
+
+                if (status.running) {
+                    btn.disabled = true;
+                    btn.innerHTML = '<span class="spinner"></span>실행 중...';
+                    statusBox.className = 'status-box show running';
+                    statusMessage.innerHTML = `
+                        <strong>⏳ 실행 중...</strong><br>
+                        ${status.message}<br>
+                        <small>시작 시간: ${new Date(status.start_time).toLocaleString('ko-KR')}</small>
+                    `;
+                } else if (status.status === 'completed') {
+                    btn.disabled = false;
+                    btn.textContent = '금주 추천 실행하기';
+                    statusBox.className = 'status-box show completed';
+                    statusMessage.innerHTML = `
+                        <strong>✅ 완료!</strong><br>
+                        ${status.message}<br>
+                        <small>종료 시간: ${new Date(status.end_time).toLocaleString('ko-KR')}</small>
+                    `;
+
+                    // 상태 체크 중지
+                    if (statusCheckInterval) {
+                        clearInterval(statusCheckInterval);
+                        statusCheckInterval = null;
+                    }
+
+                    // 결과 목록 새로고침
+                    loadResults();
+                } else if (status.status === 'error') {
+                    btn.disabled = false;
+                    btn.textContent = '금주 추천 실행하기';
+                    statusBox.className = 'status-box show error';
+                    statusMessage.innerHTML = `
+                        <strong>❌ 오류 발생</strong><br>
+                        ${status.message}
+                    `;
+
+                    // 상태 체크 중지
+                    if (statusCheckInterval) {
+                        clearInterval(statusCheckInterval);
+                        statusCheckInterval = null;
+                    }
+                } else {
+                    btn.disabled = false;
+                    btn.textContent = '금주 추천 실행하기';
+                }
+            } catch (error) {
+                console.error('상태 확인 실패:', error);
+            }
+        }
+
+        // 결과 목록 불러오기
+        async function loadResults() {
+            const resultsList = document.getElementById('resultsList');
+
+            try {
+                const response = await fetch('/api/results');
+                const results = await response.json();
+
+                if (results.length === 0) {
+                    resultsList.innerHTML = '<div class="empty-state">아직 생성된 결과 파일이 없습니다</div>';
+                    return;
+                }
+
+                resultsList.innerHTML = results.map(file => `
+                    <div class="result-item">
+                        <div class="result-info">
+                            <div class="result-name">
+                                ${file.filename}
+                                <span class="badge badge-${file.type}">${file.type}</span>
+                            </div>
+                            <div class="result-meta">
+                                생성: ${new Date(file.created_at).toLocaleString('ko-KR')} |
+                                크기: ${file.size_kb} KB
+                            </div>
+                        </div>
+                        <div class="result-actions">
+                            ${file.type === 'json' ? `
+                                <button class="btn-small" onclick="previewResult('${file.filename}')">미리보기</button>
+                            ` : ''}
+                            <button class="btn-small" onclick="downloadResult('${file.filename}')">다운로드</button>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                resultsList.innerHTML = '<div class="empty-state">결과 파일을 불러오는데 실패했습니다</div>';
+                console.error('결과 불러오기 실패:', error);
+            }
+        }
+
+        // 파일 다운로드
+        function downloadResult(filename) {
+            window.open(`/api/results/${filename}`, '_blank');
+        }
+
+        // JSON 미리보기
+        async function previewResult(filename) {
+            try {
+                const response = await fetch(`/api/results/${filename}/preview`);
+                const preview = await response.json();
+
+                const previewWindow = window.open('', '_blank', 'width=800,height=600');
+                previewWindow.document.write(`
+                    <html>
+                    <head>
+                        <title>${filename} 미리보기</title>
+                        <style>
+                            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 20px; }
+                            h2 { color: #667eea; }
+                            .section { margin-bottom: 30px; }
+                            .theme-item, .stock-item { background: #f8f9fa; padding: 10px; margin: 5px 0; border-radius: 5px; }
+                            pre { background: #f8f9fa; padding: 15px; border-radius: 5px; overflow: auto; }
+                        </style>
+                    </head>
+                    <body>
+                        <h1>📊 ${filename}</h1>
+                        <p>생성 시간: ${preview.generated_at}</p>
+
+                        <div class="section">
+                            <h2>🔥 Hot 테마 (${preview.hot_themes_count}개)</h2>
+                            ${preview.hot_themes.map(t => `
+                                <div class="theme-item">
+                                    <strong>${t.rank}. ${t.name}</strong><br>
+                                    점수: ${t.score}/100 | 등락률: ${t.change_rate}
+                                </div>
+                            `).join('')}
+                        </div>
+
+                        <div class="section">
+                            <h2>📈 금주 추천 종목 (${preview.weekly_recommendations_count}개)</h2>
+                            ${preview.weekly_recommendations.map(s => `
+                                <div class="stock-item">
+                                    <strong>${s.name} (${s.ticker})</strong> - ${s.country}<br>
+                                    현재가: ${s.current_price} | 전일대비: ${s.daily_change_rate}
+                                </div>
+                            `).join('')}
+                        </div>
+
+                        <div class="section">
+                            <h2>🤖 AI 분석</h2>
+                            <p>사용된 AI 엔진: ${preview.ai_engines.join(', ')}</p>
+                        </div>
+
+                        <button onclick="window.close()" style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer;">닫기</button>
+                    </body>
+                    </html>
+                `);
+            } catch (error) {
+                alert('미리보기를 불러오는데 실패했습니다: ' + error.message);
+            }
+        }
+    </script>
+</body>
+</html>

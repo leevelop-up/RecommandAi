@@ -257,6 +257,38 @@ sudo docker cp recommandai-redis:/data/dump.rdb ./backup_redis_$(date +%Y%m%d).r
 - MariaDB 컨테이너 상태 확인: `sudo docker ps`
 - 네트워크 확인: `sudo docker network inspect recommand-network`
 
+### 외부에서 Redis/MariaDB 접속 불가
+
+외부 클라이언트(DataGrip, Redis Desktop Manager 등)에서 접속이 안 되는 경우:
+
+1. **NAS 방화벽 설정 확인**
+   - 제어판 > 보안 > 방화벽
+   - 사용하는 포트 허용 (Redis: 6380, MariaDB: 2906)
+
+2. **Docker 포트 매핑 확인**
+   ```bash
+   sudo docker port recommandai-redis
+   sudo docker port recommandai-mariadb
+   ```
+
+3. **컨테이너 내부에서 접속 테스트**
+   ```bash
+   # Redis 테스트
+   sudo docker exec recommandai-redis redis-cli -a 'your_password' ping
+
+   # MariaDB 테스트
+   sudo docker exec recommandai-mariadb mysql -u root -p -e "SELECT 1"
+   ```
+
+4. **외부에서 포트 테스트**
+   ```bash
+   # Redis 연결 테스트
+   redis-cli -h your-nas-ip -p 6380 -a 'your_password' ping
+
+   # 포트 열림 확인
+   nc -zv your-nas-ip 6380
+   ```
+
 ### 메모리 부족
 
 - Docker 메모리 제한 늘리기

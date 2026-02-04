@@ -42,3 +42,7 @@ pydantic-settings==2.1.0
 # 유틸리티
 loguru==0.7.2
 tqdm==4.66.2
+
+# 웹 서버
+fastapi==0.109.2
+uvicorn[standard]==0.27.1

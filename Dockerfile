@@ -19,9 +19,6 @@ COPY requirements.txt .
 # Python 패키지 설치
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Playwright 브라우저 설치
-RUN playwright install --with-deps chromium
-
 # 소스 코드 복사
 COPY . .
 
@@ -33,5 +30,5 @@ ENV TZ=Asia/Seoul
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import sys; sys.exit(0)" || exit 1
 
-# 기본 명령어 - scheduler로 실행
-CMD ["python", "scheduler.py"]
+# 기본 명령어 - 웹 서버 + 스케줄러 실행
+CMD ["bash", "start.sh"]
