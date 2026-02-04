@@ -22,8 +22,6 @@ services:
       - REDIS_HOST=${REDIS_HOST}
       - REDIS_PORT=${REDIS_PORT}
       - REDIS_PASSWORD=${REDIS_PASSWORD}
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     volumes:
       - ./logs:/app/logs
       - ./data:/app/data
