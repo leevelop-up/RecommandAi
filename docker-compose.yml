@@ -10,46 +10,23 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - TZ=Asia/Seoul
-      # 아래 환경 변수는 .env 파일이나 docker-compose 실행 시 설정
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - NAVER_CLIENT_ID=${NAVER_CLIENT_ID}
       - NAVER_CLIENT_SECRET=${NAVER_CLIENT_SECRET}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - MARIADB_HOST=${MARIADB_HOST:-mariadb}
-      - MARIADB_PORT=${MARIADB_PORT:-3306}
-      - MARIADB_DATABASE=${MARIADB_DATABASE:-recommand_stock}
-      - MARIADB_USER=${MARIADB_USER:-root}
+      - MARIADB_HOST=${MARIADB_HOST}
+      - MARIADB_PORT=${MARIADB_PORT}
+      - MARIADB_DATABASE=${MARIADB_DATABASE}
+      - MARIADB_USER=${MARIADB_USER}
       - MARIADB_PASSWORD=${MARIADB_PASSWORD}
-      - REDIS_HOST=${REDIS_HOST:-redis}
-      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./logs:/app/logs
       - ./data:/app/data
       - ./output:/app/output
     ports:
       - "8001:8000"
-    depends_on:
-      - redis
-    networks:
-      - recommand-network
-
-  redis:
-    image: redis:7-alpine
-    container_name: recommandai-redis
-    restart: unless-stopped
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-cpz8377!@#} --bind 0.0.0.0 --protected-mode no
-    environment:
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-cpz8377!@#}
-    volumes:
-      - redis-data:/data
-    ports:
-      - "0.0.0.0:6380:6379"
-    networks:
-      - recommand-network
-
-volumes:
-  redis-data:
-
-networks:
-  recommand-network:
-    driver: bridge
