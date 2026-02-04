@@ -132,32 +132,16 @@ REDIS_PORT=6379
 
 스케줄러 대신 수동으로 특정 작업 실행:
 
-### 데이터 수집
+### 금주 추천 실행
 
 ```bash
-sudo docker exec recommandai python main.py
+sudo docker exec recommandai python run_weekly_recommendation.py
 ```
 
-### AI 추천 실행
+### 뉴스 수집
 
 ```bash
-# 기본 AI 추천
-sudo docker exec recommandai python run_ai_recommendation.py
-
-# 규칙 기반만
-sudo docker exec recommandai python run_ai_recommendation.py --rule-only
-
-# 급등 예측
-sudo docker exec recommandai python run_ai_recommendation.py --predict
-
-# 모두 실행
-sudo docker exec recommandai python run_ai_recommendation.py --all
-```
-
-### 관련 종목 찾기
-
-```bash
-sudo docker exec recommandai python find_all_related.py
+sudo docker exec recommandai python collect_comprehensive_news.py
 ```
 
 ## 유용한 명령어
