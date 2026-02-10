@@ -18,7 +18,7 @@ jobs:
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.NAS_HOST }}
-          username: ${{ secrets.NAS_USER }}
+          username: ${{ secrets.NAS_USERNAME }}
           key: ${{ secrets.NAS_SSH_KEY }}
           port: ${{ secrets.NAS_PORT }}
           script: |
