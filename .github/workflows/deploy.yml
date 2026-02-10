@@ -1,22 +1,46 @@
-name: Deploy to Synology NAS
+name: Deploy to NAS
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
   deploy:
+    name: Deploy to NAS Server
     runs-on: ubuntu-latest
     
     steps:
-    - name: Deploy to NAS
-      uses: appleboy/ssh-action@v1.0.0
-      with:
-        host: ${{ secrets.NAS_HOST }}
-        username: ${{ secrets.NAS_USERNAME }}
-        key: ${{ secrets.NAS_SSH_KEY }}
-        port: ${{ secrets.NAS_PORT }}
-        script: |
-          cd /volume1/docker/RecommandAi
-          sudo git pull origin main
-          sudo docker-compose up -d --build
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to NAS via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.NAS_HOST }}
+          username: ${{ secrets.NAS_USER }}
+          key: ${{ secrets.NAS_SSH_KEY }}
+          port: ${{ secrets.NAS_PORT }}
+          script: |
+            cd ${{ secrets.NAS_DEPLOY_PATH }}/RecommandAi
+            git pull origin main
+            docker-compose down
+            docker-compose build
+            docker-compose up -d
+            echo "✅ RecommandAi 배포 완료"
+            docker-compose ps
+
+      - name: Health Check
+        run: |
+          sleep 10
+          curl -f http://${{ secrets.NAS_HOST }}:8000/health || exit 1
+
+      - name: Notify deployment status
+        if: always()
+        run: |
+          if [ ${{ job.status }} == 'success' ]; then
+            echo "🎉 배포 성공!"
+          else
+            echo "❌ 배포 실패"
+            exit 1
+          fi
