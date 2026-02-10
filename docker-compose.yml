@@ -1,33 +1,58 @@
 version: '3.8'
 
 services:
-  recommandai:
+  # FastAPI 백엔드
+  api:
     build:
       context: .
-      dockerfile: Dockerfile
-    container_name: recommandai
-    restart: unless-stopped
+      dockerfile: Dockerfile.api
+    container_name: recommandai-api
+    ports:
+      - "8000:8000"
     environment:
-      - PYTHONUNBUFFERED=1
-      - TZ=Asia/Seoul
+      - MARIADB_HOST=leevelop.com
+      - MARIADB_PORT=2906
+      - MARIADB_USER=merong2969
+      - MARIADB_PASSWORD=Seung0075!
+      - MARIADB_DATABASE=recommandstock
+      - REDIS_HOST=172.20.0.1
+      - REDIS_PORT=6379
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GROQ_API_KEY=${GROQ_API_KEY}
       - XAI_API_KEY=${XAI_API_KEY}
-      - AI_ENGINE=${AI_ENGINE:-groq}
-      - NAVER_CLIENT_ID=${NAVER_CLIENT_ID}
-      - NAVER_CLIENT_SECRET=${NAVER_CLIENT_SECRET}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - MARIADB_HOST=${MARIADB_HOST}
-      - MARIADB_PORT=${MARIADB_PORT}
-      - MARIADB_DATABASE=${MARIADB_DATABASE}
-      - MARIADB_USER=${MARIADB_USER}
-      - MARIADB_PASSWORD=${MARIADB_PASSWORD}
-      - REDIS_HOST=${REDIS_HOST}
-      - REDIS_PORT=${REDIS_PORT}
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - AI_ENGINE=groq
     volumes:
-      - ./logs:/app/logs
-      - ./data:/app/data
       - ./output:/app/output
-    ports:
-      - "8001:8000"
+      - ./logs:/app/logs
+    restart: unless-stopped
+    networks:
+      - recommand-network
+
+  # 스케줄러 (데이터 수집)
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile.scheduler
+    container_name: recommandai-scheduler
+    environment:
+      - MARIADB_HOST=leevelop.com
+      - MARIADB_PORT=2906
+      - MARIADB_USER=merong2969
+      - MARIADB_PASSWORD=Seung0075!
+      - MARIADB_DATABASE=recommandstock
+      - REDIS_HOST=172.20.0.1
+      - REDIS_PORT=6379
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - XAI_API_KEY=${XAI_API_KEY}
+      - AI_ENGINE=groq
+    volumes:
+      - ./output:/app/output
+      - ./logs:/app/logs
+    restart: unless-stopped
+    networks:
+      - recommand-network
+
+networks:
+  recommand-network:
+    driver: bridge
