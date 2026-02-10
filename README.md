@@ -13,3 +13,4 @@
 - Backend API: http://leevelop.com:8000
 - API Docs: http://leevelop.com:8000/docs
 
+# 배포 테스트 Tue Feb 10 23:54:33 KST 2026
