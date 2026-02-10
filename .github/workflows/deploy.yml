@@ -21,6 +21,7 @@ jobs:
           username: ${{ secrets.NAS_USERNAME }}
           key: ${{ secrets.NAS_SSH_KEY }}
           port: ${{ secrets.NAS_PORT }}
+          command_timeout: 30m
           script: |
             cd ~/docker/RecommandAi
             git pull origin main

@@ -3,11 +3,9 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# 시스템 패키지 설치
+# 시스템 패키지 설치 (chromium 제외 - 필요시 playwright 사용)
 RUN apt-get update && apt-get install -y \
     gcc \
-    chromium \
-    chromium-driver \
     && rm -rf /var/lib/apt/lists/*
 
 # Python 패키지 설치
