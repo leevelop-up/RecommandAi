@@ -22,13 +22,13 @@ jobs:
           key: ${{ secrets.NAS_SSH_KEY }}
           port: ${{ secrets.NAS_PORT }}
           script: |
-            cd ${{ secrets.NAS_DEPLOY_PATH }}/RecommandAi
+            cd ~/docker/RecommandAi
             git pull origin main
-            docker-compose down
-            docker-compose build
-            docker-compose up -d
+            /usr/local/bin/docker-compose down
+            /usr/local/bin/docker-compose build
+            /usr/local/bin/docker-compose up -d
             echo "✅ RecommandAi 배포 완료"
-            docker-compose ps
+            /usr/local/bin/docker-compose ps
 
       - name: Health Check
         run: |
