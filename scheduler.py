@@ -1,23 +1,19 @@
 """
-주식 추천 스케줄러 - 금주 추천 시스템 (Gemini + Groq 듀얼 AI)
+주식 추천 스케줄러 — scrapers → Aidata 듀얼 파이프라인
 
 실행 방법:
-    python scheduler.py                         # 기본 (08:00, 09:00 - 금주추천 모드)
-    python scheduler.py --mode weekly --once    # 즉시 1회 실행 (금주 추천)
+    python scheduler.py                         # 기본 스케줄 (금주추천 모드)
+    python scheduler.py --mode weekly --once    # 즉시 1회 실행 (스크랩 + AI)
     python scheduler.py --mode legacy --once    # 즉시 1회 실행 (기존 방식)
-    python scheduler.py --times 08:00 09:00     # 커스텀 시간 (08시 데이터수집, 09시 추천생성)
+    python scheduler.py --times 08:00 09:00     # 커스텀 실행 시간
 
-서버에서 계속 실행:
-    nohup python scheduler.py > scheduler.log 2>&1 &
+개별 단계 실행 (로컬 테스트):
+    python scrapers/run_scrapers.py             # Step 1: 스크랩만 → output/scrap/
+    python Aidata/run_aidata.py                 # Step 2: AI만  → output/ai/
 
-또는 crontab 사용 (서버에 등록):
-    crontab -e
-    0 8 * * 1-5 cd /path/to/recommandai && python run_weekly_recommendation.py
-
-금주 추천 모드 (기본):
-    - 08:00: 데이터 수집 (Hot 테마 10개, 추천 종목 30개)
-    - 09:00: AI 분석 (Gemini + Groq 듀얼 분석)
-    - 뉴스 기반 동적 분석 (하드코딩 없음)
+금주 추천 모드 (기본) — Step 1 → 2 순차 실행:
+    Step 1 (스크랩)  : 뉴스·상승주가·테마·회사정보 → output/scrap/
+    Step 2 (AI 분석) : scrap 데이터 → Gemini + Groq → output/ai/
 """
 import sys
 import os
@@ -64,72 +60,52 @@ def run_news_collection():
 
 
 def run_weekly_recommendation():
-    """금주 추천 실행 (Gemini + Groq 듀얼 AI)"""
-    from config.settings import get_settings
-    from processors.enhanced_data_collector import EnhancedDataCollector
-    from processors.weekly_recommender import WeeklyRecommender
-    from pathlib import Path
-    import json
-
-    settings = get_settings()
-    output_dir = Path(__file__).parent / "output"
-    output_dir.mkdir(exist_ok=True)
-
+    """금주 추천 실행 (스크랩 → Gemini + Groq 듀얼 AI)"""
     try:
-        # 0. 뉴스 수집 (08:00 작업)
-        logger.info("[스케줄러] 뉴스 수집 시작 (08:00)")
-        run_news_collection()
+        # ── Step 1/2: 스크랩 → output/scrap/ ──
+        logger.info("[스케줄러] ── Step 1/2: 스크랩 실행 시작 ──")
+        from scrapers.run_scrapers import ScrapeRunner
+        ScrapeRunner().run_all()
+        logger.info("[스케줄러] ── Step 1/2: 스크랩 완료 ──\n")
 
-        # 1. 강화된 데이터 수집 (08:00 작업)
-        logger.info("[스케줄러] 강화된 데이터 수집 시작")
-        collector = EnhancedDataCollector()
-        data = collector.collect_weekly_data()
-        logger.info(f"[스케줄러] 데이터 수집 완료: Hot테마 {len(data.get('hot_themes', []))}개, 추천종목 {len(data.get('weekly_recommendations', []))}개")
-
-        # 2. AI 추천 생성 (09:00 작업 - Gemini + Groq 듀얼)
-        logger.info("[스케줄러] AI 추천 생성 시작 (Gemini + Groq 듀얼 분석)")
-        recommender = WeeklyRecommender(
-            gemini_api_key=settings.GEMINI_API_KEY,
-            groq_api_key=settings.GROQ_API_KEY,
-        )
-        result = recommender.generate_weekly_recommendations(data)
-
-        # 3. 결과 저장
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        json_file = output_dir / f"weekly_recommendation_{timestamp}.json"
-        txt_file = output_dir / f"weekly_recommendation_{timestamp}.txt"
-
-        with open(json_file, "w", encoding="utf-8") as f:
-            json.dump(result, f, ensure_ascii=False, indent=2)
-
-        # 간단한 텍스트 요약
-        with open(txt_file, "w", encoding="utf-8") as f:
-            f.write("=" * 100 + "\n")
-            f.write("금주 추천 리포트\n")
-            f.write("=" * 100 + "\n")
-            f.write(f"생성 시간: {result.get('generated_at', 'N/A')}\n")
-            f.write(f"Hot 테마: {len(result.get('hot_themes', []))}개\n")
-            f.write(f"추천 종목: {len(result.get('weekly_recommendations', []))}개\n")
-            f.write(f"AI 분석: {', '.join(result.get('ai_recommendations', {}).keys())}\n")
-
-        logger.info(f"[스케줄러] 파일 저장 완료")
-        logger.info(f"  금주 추천 JSON: {json_file}")
-        logger.info(f"  금주 추천 TXT:  {txt_file}")
-
-        # 4. DB 저장 (선택적)
-        try:
-            from db.save_to_db import WeeklyRecommendationDB
-            db = WeeklyRecommendationDB()
-            rec_id = db.save_weekly_recommendation(str(json_file), str(txt_file))
-            db.close()
-            logger.info(f"[스케줄러] DB 저장 완료: ID={rec_id}")
-        except Exception as e:
-            logger.warning(f"[스케줄러] DB 저장 실패 (파일은 저장됨): {e}")
+        # ── Step 2/2: AI 분석 → output/ai/ ──
+        logger.info("[스케줄러] ── Step 2/2: AI 분석 실행 시작 ──")
+        from Aidata.run_aidata import load_scrap_data, run_ai_analysis, save_ai_result
+        data   = load_scrap_data()
+        result = run_ai_analysis(data)
+        save_ai_result(result)
+        logger.info("[스케줄러] ── Step 2/2: AI 분석 완료 ──")
 
         return True
 
     except Exception as e:
         logger.error(f"[스케줄러] 금주 추천 실행 실패: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False
+
+
+def run_quant_analysis():
+    """퀀트 전략 분석 실행 (ML 모델 기반 BUY/HOLD/SELL)"""
+    try:
+        logger.info("[스케줄러] ── 퀀트 전략 분석 시작 ──")
+        from processors.quant_strategy import run_quant_batch
+
+        DEFAULT_TICKERS = [
+            {"ticker": "005930", "name": "삼성전자"},
+            {"ticker": "000660", "name": "SK하이닉스"},
+            {"ticker": "051910", "name": "LG화학"},
+            {"ticker": "017670", "name": "SK텔레콤"},
+            {"ticker": "068270", "name": "AHNLAB"},
+        ]
+        results = run_quant_batch(DEFAULT_TICKERS)
+
+        success = sum(1 for r in results if "error" not in r)
+        logger.info(f"[스케줄러] ── 퀀트 분석 완료: {success}/{len(results)}개 성공 ──")
+        return True
+
+    except Exception as e:
+        logger.error(f"[스케줄러] 퀀트 분석 실패: {e}")
         import traceback
         logger.error(traceback.format_exc())
         return False
@@ -231,8 +207,8 @@ def main():
     parser.add_argument("--times", nargs="+", default=["08:00", "09:00"],
                         help="실행 시간 (기본: 08:00 09:00 - 08시 데이터수집, 09시 추천생성)")
     parser.add_argument("--once", action="store_true", help="즉시 1회만 실행")
-    parser.add_argument("--mode", choices=["weekly", "legacy"], default="weekly",
-                        help="실행 모드: weekly(금주추천-듀얼AI) 또는 legacy(기존방식)")
+    parser.add_argument("--mode", choices=["weekly", "legacy", "quant"], default="weekly",
+                        help="실행 모드: weekly(금주추천-듀얼AI) / legacy(기존방식) / quant(퀀트 ML 전략)")
     args = parser.parse_args()
 
     setup_logger()
@@ -242,6 +218,9 @@ def main():
         if args.mode == "weekly":
             logger.info("[스케줄러] 모드: 금주 추천 (Gemini + Groq 듀얼 AI)")
             run_weekly_recommendation()
+        elif args.mode == "quant":
+            logger.info("[스케줄러] 모드: 퀀트 ML 전략 (BUY/HOLD/SELL)")
+            run_quant_analysis()
         else:
             logger.info("[스케줄러] 모드: 기존 추천")
             run_recommendation()
@@ -281,6 +260,8 @@ def main():
             logger.info(f"[스케줄러] === 실행 시작 ({datetime.now().strftime('%H:%M')}) ===")
             if args.mode == "weekly":
                 run_weekly_recommendation()
+            elif args.mode == "quant":
+                run_quant_analysis()
             else:
                 run_recommendation()
             # 중복 실행 방지 - 1분 대기

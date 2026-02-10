@@ -16,6 +16,10 @@ alpha-vantage==2.3.1
 pandas==2.2.0
 numpy==1.26.4
 
+# ML 모델 (퀀트 전략)
+scikit-learn==1.4.2
+xgboost==1.7.6
+
 # 벡터화 / AI
 openai==1.12.0
 groq==0.5.0

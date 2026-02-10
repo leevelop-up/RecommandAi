@@ -37,50 +37,105 @@ class DynamicThemeScraper:
             logger.error(f"페이지 요청 실패: {url}, {e}")
             return None
 
-    def get_all_themes(self, pages: int = 5) -> List[Dict]:
+    def get_all_themes(self, pages: int = None, max_pages: int = 50) -> List[Dict]:
         """
         전체 테마 목록 조회 (여러 페이지)
 
         Args:
-            pages: 조회할 페이지 수
+            pages: 조회할 페이지 수 (None이면 자동으로 모든 페이지 크롤링)
+            max_pages: 최대 페이지 수 제한 (무한 루프 방지)
 
         Returns:
             테마 목록
         """
         all_themes = []
+        page = 1
 
-        for page in range(1, pages + 1):
-            url = f"{self.BASE_URL}/sise/theme.naver?&page={page}"
-            soup = self._get_soup(url)
+        # pages가 지정되지 않으면 자동으로 모든 페이지 크롤링
+        if pages is None:
+            logger.info("모든 테마 페이지 자동 크롤링 시작...")
+            while page <= max_pages:
+                url = f"{self.BASE_URL}/sise/theme.naver?&page={page}"
+                soup = self._get_soup(url)
 
-            if not soup:
-                continue
+                if not soup:
+                    break
 
-            try:
-                links = soup.select('td a[href*="type=theme"]')
-                for link in links:
-                    href = link.get("href", "")
-                    code_match = re.search(r"no=(\d+)", href)
-                    if code_match:
-                        theme_name = link.text.strip()
-                        theme_code = code_match.group(1)
+                try:
+                    links = soup.select('td a[href*="type=theme"]')
 
-                        # 등락률 찾기
-                        parent_td = link.find_parent("td")
-                        if parent_td:
-                            next_tds = parent_td.find_next_siblings("td")
-                            change_rate = next_tds[1].text.strip() if len(next_tds) > 1 else ""
-                        else:
-                            change_rate = ""
+                    # 더 이상 테마가 없으면 종료
+                    if not links:
+                        logger.info(f"페이지 {page}에서 테마 없음 - 크롤링 종료")
+                        break
 
-                        all_themes.append({
-                            "name": theme_name,
-                            "code": theme_code,
-                            "change_rate": change_rate,
-                        })
+                    page_themes = []
+                    for link in links:
+                        href = link.get("href", "")
+                        code_match = re.search(r"no=(\d+)", href)
+                        if code_match:
+                            theme_name = link.text.strip()
+                            theme_code = code_match.group(1)
 
-            except Exception as e:
-                logger.error(f"테마 목록 파싱 실패 (page {page}): {e}")
+                            # 등락률 찾기
+                            parent_td = link.find_parent("td")
+                            if parent_td:
+                                next_tds = parent_td.find_next_siblings("td")
+                                change_rate = next_tds[1].text.strip() if len(next_tds) > 1 else ""
+                            else:
+                                change_rate = ""
+
+                            page_themes.append({
+                                "name": theme_name,
+                                "code": theme_code,
+                                "change_rate": change_rate,
+                            })
+
+                    if page_themes:
+                        all_themes.extend(page_themes)
+                        logger.info(f"페이지 {page}: {len(page_themes)}개 테마 수집 (누적: {len(all_themes)}개)")
+                    else:
+                        break
+
+                    page += 1
+
+                except Exception as e:
+                    logger.error(f"테마 목록 파싱 실패 (page {page}): {e}")
+                    break
+        else:
+            # 지정된 페이지 수만큼만 크롤링
+            for page in range(1, pages + 1):
+                url = f"{self.BASE_URL}/sise/theme.naver?&page={page}"
+                soup = self._get_soup(url)
+
+                if not soup:
+                    continue
+
+                try:
+                    links = soup.select('td a[href*="type=theme"]')
+                    for link in links:
+                        href = link.get("href", "")
+                        code_match = re.search(r"no=(\d+)", href)
+                        if code_match:
+                            theme_name = link.text.strip()
+                            theme_code = code_match.group(1)
+
+                            # 등락률 찾기
+                            parent_td = link.find_parent("td")
+                            if parent_td:
+                                next_tds = parent_td.find_next_siblings("td")
+                                change_rate = next_tds[1].text.strip() if len(next_tds) > 1 else ""
+                            else:
+                                change_rate = ""
+
+                            all_themes.append({
+                                "name": theme_name,
+                                "code": theme_code,
+                                "change_rate": change_rate,
+                            })
+
+                except Exception as e:
+                    logger.error(f"테마 목록 파싱 실패 (page {page}): {e}")
 
         # 캐시에 저장
         for theme in all_themes:

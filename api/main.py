@@ -1,64 +1,327 @@
 """
-FastAPI 메인 서버 - RecommandStock 프론트엔드용 API
+RecommandAi FastAPI 서버
 """
-import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Dict, List
+from typing import List, Optional
+from datetime import datetime
 from loguru import logger
 
-from api.recommendations import router as recommendations_router
-from api.themes import router as themes_router
-from api.news import router as news_router
-from api.data_files import router as data_files_router
+from api.database import get_db, test_connection
+from api.models import (
+    Theme, ThemeDetail, ThemesResponse,
+    NewsItem, NewsResponse,
+    Stock, ThemeStock
+)
 
+# FastAPI 앱 생성
 app = FastAPI(
-    title="RecommandStock API",
-    description="AI 주식 추천 API for React Frontend",
+    title="RecommandAi API",
+    description="주식 테마 및 종목 추천 API",
     version="1.0.0"
 )
 
-# CORS 설정 - 프론트엔드에서 접근 가능하도록
+# CORS 설정 (프론트엔드 연동을 위해)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],  # Vite, React 기본 포트
+    allow_origins=["*"],  # 프로덕션에서는 specific origins만 허용
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 라우터 등록
-app.include_router(recommendations_router, prefix="/api/recommendations", tags=["Recommendations"])
-app.include_router(themes_router, prefix="/api/themes", tags=["Themes"])
-app.include_router(news_router, prefix="/api/news", tags=["News"])
-app.include_router(data_files_router, prefix="/api", tags=["DataFiles"])
+
+@app.on_event("startup")
+async def startup_event():
+    """서버 시작시 DB 연결 테스트"""
+    logger.info("🚀 RecommandAi API 서버 시작")
+    test_connection()
 
 
 @app.get("/")
-def root():
-    """API 루트"""
+async def root():
+    """루트 엔드포인트"""
     return {
-        "service": "RecommandStock API",
+        "service": "RecommandAi API",
         "version": "1.0.0",
-        "endpoints": {
-            "recommendations": "/api/recommendations/today",
-            "growth": "/api/recommendations/growth",
-            "themes": "/api/themes",
-            "news": "/api/news/market"
-        }
+        "status": "running"
     }
 
 
 @app.get("/health")
-def health_check():
+async def health_check():
     """헬스 체크"""
-    return {"status": "healthy", "service": "RecommandStock API"}
+    db_ok = test_connection()
+    return {
+        "status": "healthy" if db_ok else "unhealthy",
+        "database": "connected" if db_ok else "disconnected",
+        "timestamp": datetime.now().isoformat()
+    }
+
+
+@app.get("/api/themes", response_model=ThemesResponse)
+async def get_themes(
+    limit: int = 100,
+    offset: int = 0,
+    sort_by: str = "theme_score",
+    order: str = "desc"
+):
+    """
+    테마 목록 조회
+
+    Args:
+        limit: 조회 개수 (기본 100)
+        offset: 시작 위치 (기본 0)
+        sort_by: 정렬 기준 (theme_score, rank, created_at)
+        order: 정렬 순서 (asc, desc)
+    """
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+
+            # 정렬 옵션 검증
+            valid_sorts = ['theme_score', 'rank', 'created_at', 'stock_count']
+            if sort_by not in valid_sorts:
+                sort_by = 'theme_score'
+
+            order = 'DESC' if order.lower() == 'desc' else 'ASC'
+
+            # 테마 목록 조회
+            sql = f"""
+            SELECT * FROM themes
+            WHERE is_active = TRUE
+            ORDER BY {sort_by} {order}
+            LIMIT %s OFFSET %s
+            """
+            cursor.execute(sql, (limit, offset))
+            themes_data = cursor.fetchall()
+
+            # 전체 개수 조회
+            cursor.execute("SELECT COUNT(*) as total FROM themes WHERE is_active = TRUE")
+            total = cursor.fetchone()['total']
+
+            cursor.close()
+
+            themes = [Theme(**theme) for theme in themes_data]
+
+            return ThemesResponse(themes=themes, total=total)
+
+    except Exception as e:
+        logger.error(f"테마 목록 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/themes/hot")
+async def get_hot_themes(limit: int = 20):
+    """
+    급등 테마 조회 (theme_score 기준)
+    """
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+
+            sql = """
+            SELECT * FROM themes
+            WHERE is_active = TRUE
+            ORDER BY theme_score DESC, daily_change DESC
+            LIMIT %s
+            """
+            cursor.execute(sql, (limit,))
+            themes_data = cursor.fetchall()
+            cursor.close()
+
+            themes = [Theme(**theme) for theme in themes_data]
+
+            return {"themes": themes, "total": len(themes)}
+
+    except Exception as e:
+        logger.error(f"급등 테마 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/themes/{theme_id}", response_model=ThemeDetail)
+async def get_theme_detail(theme_id: int):
+    """
+    테마 상세 조회 (관련주 포함)
+
+    Args:
+        theme_id: 테마 ID
+    """
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+
+            # 테마 정보 조회
+            cursor.execute("SELECT * FROM themes WHERE id = %s", (theme_id,))
+            theme_data = cursor.fetchone()
+
+            if not theme_data:
+                raise HTTPException(status_code=404, detail="테마를 찾을 수 없습니다")
+
+            # 관련주 조회 (tier별로)
+            cursor.execute("""
+                SELECT * FROM theme_stocks
+                WHERE theme_id = %s AND tier = 1
+                ORDER BY stock_price DESC
+            """, (theme_id,))
+            tier1_stocks = [ThemeStock(**row) for row in cursor.fetchall()]
+
+            cursor.execute("""
+                SELECT * FROM theme_stocks
+                WHERE theme_id = %s AND tier = 2
+                ORDER BY stock_price DESC
+            """, (theme_id,))
+            tier2_stocks = [ThemeStock(**row) for row in cursor.fetchall()]
+
+            cursor.execute("""
+                SELECT * FROM theme_stocks
+                WHERE theme_id = %s AND tier = 3
+                ORDER BY stock_price DESC
+            """, (theme_id,))
+            tier3_stocks = [ThemeStock(**row) for row in cursor.fetchall()]
+
+            # 관련 뉴스 조회
+            cursor.execute("""
+                SELECT n.* FROM news n
+                INNER JOIN theme_stocks ts ON n.ticker = ts.stock_code
+                WHERE ts.theme_id = %s
+                ORDER BY n.created_at DESC
+                LIMIT 10
+            """, (theme_id,))
+            news = [NewsItem(**row) for row in cursor.fetchall()]
+
+            cursor.close()
+
+            theme = ThemeDetail(
+                **theme_data,
+                tier1_stocks=tier1_stocks,
+                tier2_stocks=tier2_stocks,
+                tier3_stocks=tier3_stocks,
+                news=news
+            )
+
+            return theme
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"테마 상세 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/news/market", response_model=NewsResponse)
+async def get_market_news(limit: int = 20):
+    """
+    시장 뉴스 조회
+
+    Args:
+        limit: 조회 개수
+    """
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                SELECT * FROM news
+                ORDER BY created_at DESC
+                LIMIT %s
+            """, (limit,))
+            news_data = cursor.fetchall()
+            cursor.close()
+
+            news = [NewsItem(**item) for item in news_data]
+
+            return NewsResponse(
+                news=news,
+                total_count=len(news),
+                collected_at=datetime.now().isoformat()
+            )
+
+    except Exception as e:
+        logger.error(f"뉴스 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/news/stock/{ticker}", response_model=NewsResponse)
+async def get_stock_news(ticker: str, limit: int = 10):
+    """
+    종목별 뉴스 조회
+
+    Args:
+        ticker: 종목 코드
+        limit: 조회 개수
+    """
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                SELECT * FROM news
+                WHERE ticker = %s
+                ORDER BY created_at DESC
+                LIMIT %s
+            """, (ticker, limit))
+            news_data = cursor.fetchall()
+            cursor.close()
+
+            news = [NewsItem(**item) for item in news_data]
+
+            return NewsResponse(
+                news=news,
+                total_count=len(news),
+                collected_at=datetime.now().isoformat(),
+                ticker=ticker
+            )
+
+    except Exception as e:
+        logger.error(f"종목 뉴스 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/stocks/{ticker}")
+async def get_stock_detail(ticker: str):
+    """
+    종목 상세 조회
+
+    Args:
+        ticker: 종목 코드
+    """
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+
+            # 종목 정보
+            cursor.execute("SELECT * FROM stocks WHERE ticker = %s", (ticker,))
+            stock_data = cursor.fetchone()
+
+            if not stock_data:
+                raise HTTPException(status_code=404, detail="종목을 찾을 수 없습니다")
+
+            # 소속 테마 조회
+            cursor.execute("""
+                SELECT t.*, ts.tier, ts.stock_price, ts.stock_change_rate
+                FROM themes t
+                INNER JOIN theme_stocks ts ON t.id = ts.theme_id
+                WHERE ts.stock_code = %s
+                ORDER BY t.theme_score DESC
+                LIMIT 10
+            """, (ticker,))
+            themes = cursor.fetchall()
+
+            cursor.close()
+
+            return {
+                "stock": Stock(**stock_data),
+                "themes": themes
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"종목 상세 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":
     import uvicorn
-    logger.info("Starting RecommandStock API Server on http://localhost:8000")
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
