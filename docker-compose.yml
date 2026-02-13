@@ -8,7 +8,7 @@ services:
       dockerfile: Dockerfile.api
     container_name: recommandai-api
     ports:
-      - "8000:8000"
+      - "3002:8000"
     environment:
       - MARIADB_HOST=leevelop.com
       - MARIADB_PORT=2906
