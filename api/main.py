@@ -59,6 +59,140 @@ async def health_check():
     }
 
 
+@app.get("/api/recommendations/today")
+async def get_today_recommendations(limit: int = 10):
+    """
+    오늘의 AI 추천 종목
+    - 높은 점수의 테마에 속한 종목들을 추천
+    """
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+
+            # 상위 테마의 Tier 1 종목들을 추천
+            sql = """
+            SELECT DISTINCT
+                ts.stock_code,
+                ts.stock_name,
+                ts.stock_price,
+                ts.stock_change_rate,
+                t.theme_name,
+                t.theme_score,
+                ts.tier
+            FROM theme_stocks ts
+            INNER JOIN themes t ON ts.theme_id = t.id
+            WHERE t.is_active = TRUE AND ts.tier = 1
+            ORDER BY t.theme_score DESC, ts.stock_price DESC
+            LIMIT %s
+            """
+            cursor.execute(sql, (limit,))
+            recommendations = cursor.fetchall()
+            cursor.close()
+
+            return {
+                "recommendations": recommendations,
+                "total": len(recommendations),
+                "generated_at": datetime.now().isoformat()
+            }
+
+    except Exception as e:
+        logger.error(f"추천 종목 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/recommendations/growth")
+async def get_growth_predictions(limit: int = 10):
+    """
+    급등 예측 종목
+    - daily_change가 높은 테마의 종목들
+    """
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+
+            sql = """
+            SELECT DISTINCT
+                ts.stock_code,
+                ts.stock_name,
+                ts.stock_price,
+                ts.stock_change_rate,
+                t.theme_name,
+                t.theme_score,
+                t.daily_change,
+                ts.tier
+            FROM theme_stocks ts
+            INNER JOIN themes t ON ts.theme_id = t.id
+            WHERE t.is_active = TRUE AND t.daily_change > 0
+            ORDER BY t.daily_change DESC, t.theme_score DESC
+            LIMIT %s
+            """
+            cursor.execute(sql, (limit,))
+            predictions = cursor.fetchall()
+            cursor.close()
+
+            return {
+                "predictions": predictions,
+                "total": len(predictions),
+                "generated_at": datetime.now().isoformat()
+            }
+
+    except Exception as e:
+        logger.error(f"급등 예측 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/recommendations/summary")
+async def get_market_summary():
+    """
+    시장 요약 정보
+    """
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+
+            # 전체 테마 통계
+            cursor.execute("""
+                SELECT
+                    COUNT(*) as total_themes,
+                    SUM(CASE WHEN daily_change > 0 THEN 1 ELSE 0 END) as rising_themes,
+                    SUM(CASE WHEN daily_change < 0 THEN 1 ELSE 0 END) as falling_themes,
+                    AVG(theme_score) as avg_score
+                FROM themes
+                WHERE is_active = TRUE
+            """)
+            theme_stats = cursor.fetchone()
+
+            # 전체 종목 수
+            cursor.execute("SELECT COUNT(DISTINCT stock_code) as total_stocks FROM theme_stocks")
+            stock_stats = cursor.fetchone()
+
+            # 전체 뉴스 수
+            cursor.execute("SELECT COUNT(*) as total_news FROM news")
+            news_stats = cursor.fetchone()
+
+            cursor.close()
+
+            return {
+                "themes": {
+                    "total": theme_stats['total_themes'],
+                    "rising": theme_stats['rising_themes'],
+                    "falling": theme_stats['falling_themes'],
+                    "average_score": round(theme_stats['avg_score'], 2) if theme_stats['avg_score'] else 0
+                },
+                "stocks": {
+                    "total": stock_stats['total_stocks']
+                },
+                "news": {
+                    "total": news_stats['total_news']
+                },
+                "updated_at": datetime.now().isoformat()
+            }
+
+    except Exception as e:
+        logger.error(f"시장 요약 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/themes", response_model=ThemesResponse)
 async def get_themes(
     limit: int = 100,
