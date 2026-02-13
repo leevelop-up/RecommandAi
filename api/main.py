@@ -73,7 +73,7 @@ async def get_today_recommendations(limit: int = 10):
             sql = """
             SELECT DISTINCT
                 ts.stock_code,
-                ts.stock_name,
+                COALESCE(s.kr_name, ts.stock_name) as stock_name,
                 ts.stock_price,
                 ts.stock_change_rate,
                 t.theme_name,
@@ -81,6 +81,7 @@ async def get_today_recommendations(limit: int = 10):
                 ts.tier
             FROM theme_stocks ts
             INNER JOIN themes t ON ts.theme_id = t.id
+            LEFT JOIN stocks s ON ts.stock_code = s.ticker
             WHERE t.is_active = TRUE AND ts.tier = 1
             ORDER BY t.theme_score DESC, ts.stock_price DESC
             LIMIT %s
@@ -113,7 +114,7 @@ async def get_growth_predictions(limit: int = 10):
             sql = """
             SELECT DISTINCT
                 ts.stock_code,
-                ts.stock_name,
+                COALESCE(s.kr_name, ts.stock_name) as stock_name,
                 ts.stock_price,
                 ts.stock_change_rate,
                 t.theme_name,
@@ -122,6 +123,7 @@ async def get_growth_predictions(limit: int = 10):
                 ts.tier
             FROM theme_stocks ts
             INNER JOIN themes t ON ts.theme_id = t.id
+            LEFT JOIN stocks s ON ts.stock_code = s.ticker
             WHERE t.is_active = TRUE AND t.daily_change > 0
             ORDER BY t.daily_change DESC, t.theme_score DESC
             LIMIT %s
@@ -294,23 +296,29 @@ async def get_theme_detail(theme_id: int):
 
             # 관련주 조회 (tier별로)
             cursor.execute("""
-                SELECT * FROM theme_stocks
-                WHERE theme_id = %s AND tier = 1
-                ORDER BY stock_price DESC
+                SELECT ts.*, COALESCE(s.kr_name, ts.stock_name) as stock_name
+                FROM theme_stocks ts
+                LEFT JOIN stocks s ON ts.stock_code = s.ticker
+                WHERE ts.theme_id = %s AND ts.tier = 1
+                ORDER BY ts.stock_price DESC
             """, (theme_id,))
             tier1_stocks = [ThemeStock(**row) for row in cursor.fetchall()]
 
             cursor.execute("""
-                SELECT * FROM theme_stocks
-                WHERE theme_id = %s AND tier = 2
-                ORDER BY stock_price DESC
+                SELECT ts.*, COALESCE(s.kr_name, ts.stock_name) as stock_name
+                FROM theme_stocks ts
+                LEFT JOIN stocks s ON ts.stock_code = s.ticker
+                WHERE ts.theme_id = %s AND ts.tier = 2
+                ORDER BY ts.stock_price DESC
             """, (theme_id,))
             tier2_stocks = [ThemeStock(**row) for row in cursor.fetchall()]
 
             cursor.execute("""
-                SELECT * FROM theme_stocks
-                WHERE theme_id = %s AND tier = 3
-                ORDER BY stock_price DESC
+                SELECT ts.*, COALESCE(s.kr_name, ts.stock_name) as stock_name
+                FROM theme_stocks ts
+                LEFT JOIN stocks s ON ts.stock_code = s.ticker
+                WHERE ts.theme_id = %s AND ts.tier = 3
+                ORDER BY ts.stock_price DESC
             """, (theme_id,))
             tier3_stocks = [ThemeStock(**row) for row in cursor.fetchall()]
 
