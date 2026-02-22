@@ -122,10 +122,18 @@ def save_to_database(ai_result: dict):
                     target_return = ""
                     tier = 3
 
-                cursor.execute("""
-                    INSERT INTO theme_stocks (theme_id, stock_code, stock_name, stock_price, stock_change_rate, tier)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                """, (theme_id, stock_code, stock_name, stock_price, target_return, tier))
+                # stock_code로 stocks 테이블에서 stock_id 조회
+                cursor.execute("SELECT id FROM stocks WHERE ticker = %s", (stock_code,))
+                stock_result = cursor.fetchone()
+                stock_id = stock_result[0] if stock_result else None
+
+                if stock_id:
+                    cursor.execute("""
+                        INSERT INTO theme_stocks (theme_id, stock_id, stock_code, stock_name, stock_price, stock_change_rate, tier)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """, (theme_id, stock_id, stock_code, stock_name, stock_price, target_return, tier))
+                else:
+                    logger.warning(f"  ⚠️ {stock_name} ({stock_code}) - stocks 테이블에 없음, 건너뜀")
 
             logger.info(f"  종목 저장: {theme_name} - {len(recommended_stocks)}개")
 
