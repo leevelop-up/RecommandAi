@@ -78,6 +78,7 @@ def save_to_database(ai_result: dict):
                 ON DUPLICATE KEY UPDATE
                     theme_score = VALUES(theme_score),
                     is_active = TRUE,
+                    created_at = NOW(),
                     updated_at = NOW()
             """, (theme_code, theme_name, theme_score))
 
