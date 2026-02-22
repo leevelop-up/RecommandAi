@@ -66,18 +66,20 @@ def save_to_database(ai_result: dict):
             # rating을 점수로 변환 (매우 강세=100, 강세=80, 중립=50 등)
             rating = theme.get("rating", "")
             theme_score = {"매우 강세": 100, "강세": 80, "중립": 50, "약세": 30}.get(rating, 70)
-            theme_summary = theme.get("reasoning", "")
+
+            # theme_code 생성 (테마명의 알파벳/숫자만 사용)
+            import re
+            theme_code = re.sub(r'[^a-zA-Z0-9가-힣]', '', theme_name)[:50]
 
             # 테마 INSERT or UPDATE
             cursor.execute("""
-                INSERT INTO themes (theme_name, theme_score, theme_summary, is_active, created_at)
+                INSERT INTO themes (theme_code, theme_name, theme_score, is_active, created_at)
                 VALUES (%s, %s, %s, TRUE, NOW())
                 ON DUPLICATE KEY UPDATE
                     theme_score = VALUES(theme_score),
-                    theme_summary = VALUES(theme_summary),
                     is_active = TRUE,
-                    created_at = NOW()
-            """, (theme_name, theme_score, theme_summary))
+                    updated_at = NOW()
+            """, (theme_code, theme_name, theme_score))
 
             # 방금 INSERT/UPDATE한 테마 ID 가져오기
             cursor.execute("SELECT id FROM themes WHERE theme_name = %s", (theme_name,))
