@@ -54,13 +54,19 @@ def save_to_database(ai_result: dict):
         """, (today,))
 
         # 2. 테마 저장
-        themes_data = ai_result.get("themes", [])
+        # AI 결과에서 Gemini 분석 추출
+        gemini_data = ai_result.get("ai_recommendations", {}).get("gemini", {})
+        themes_analysis = gemini_data.get("top_themes_analysis", [])
+        top_picks = gemini_data.get("top_10_picks", [])
+
         theme_id_map = {}  # 테마명 -> DB ID 매핑
 
-        for theme in themes_data:
-            theme_name = theme.get("theme_name", "")
-            theme_score = theme.get("theme_score", 0)
-            theme_summary = theme.get("theme_summary", "")
+        for theme in themes_analysis:
+            theme_name = theme.get("theme", "")
+            # rating을 점수로 변환 (매우 강세=100, 강세=80, 중립=50 등)
+            rating = theme.get("rating", "")
+            theme_score = {"매우 강세": 100, "강세": 80, "중립": 50, "약세": 30}.get(rating, 70)
+            theme_summary = theme.get("reasoning", "")
 
             # 테마 INSERT or UPDATE
             cursor.execute("""
@@ -81,8 +87,8 @@ def save_to_database(ai_result: dict):
             logger.info(f"  테마 저장: {theme_name} (ID: {theme_id}, 점수: {theme_score})")
 
         # 3. 종목 저장
-        for theme in themes_data:
-            theme_name = theme.get("theme_name", "")
+        for theme in themes_analysis:
+            theme_name = theme.get("theme", "")
             theme_id = theme_id_map.get(theme_name)
 
             if not theme_id:
@@ -91,26 +97,41 @@ def save_to_database(ai_result: dict):
             # 이 테마의 기존 종목 삭제
             cursor.execute("DELETE FROM theme_stocks WHERE theme_id = %s", (theme_id,))
 
-            stocks = theme.get("stocks", [])
-            for stock in stocks:
-                stock_code = stock.get("stock_code", "")
-                stock_name = stock.get("stock_name", "")
-                stock_price = stock.get("stock_price", 0)
-                stock_change_rate = stock.get("stock_change_rate", "")
-                tier = stock.get("tier", 3)
+            # recommended_stocks에서 종목 정보 가져오기
+            recommended_stocks = theme.get("recommended_stocks", [])
+
+            for stock_name in recommended_stocks:
+                # top_10_picks에서 상세 정보 찾기
+                stock_detail = None
+                for pick in top_picks:
+                    if pick.get("name") == stock_name:
+                        stock_detail = pick
+                        break
+
+                if stock_detail:
+                    stock_code = stock_detail.get("ticker", "")
+                    stock_price = float(stock_detail.get("entry_price", "0").replace(",", ""))
+                    target_return = stock_detail.get("target_return", "0%")
+                    tier = 1 if stock_detail.get("rank", 999) <= 3 else 2
+                else:
+                    # 상세 정보 없으면 기본값
+                    stock_code = ""
+                    stock_price = 0
+                    target_return = ""
+                    tier = 3
 
                 cursor.execute("""
                     INSERT INTO theme_stocks (theme_id, stock_code, stock_name, stock_price, stock_change_rate, tier)
                     VALUES (%s, %s, %s, %s, %s, %s)
-                """, (theme_id, stock_code, stock_name, stock_price, stock_change_rate, tier))
+                """, (theme_id, stock_code, stock_name, stock_price, target_return, tier))
 
-            logger.info(f"  종목 저장: {theme_name} - {len(stocks)}개")
+            logger.info(f"  종목 저장: {theme_name} - {len(recommended_stocks)}개")
 
         conn.commit()
         cursor.close()
         conn.close()
 
-        logger.info(f"✅ DB 저장 완료: {len(themes_data)}개 테마")
+        logger.info(f"✅ DB 저장 완료: {len(themes_analysis)}개 테마")
         return True
 
     except Exception as e:
