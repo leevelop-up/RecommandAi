@@ -68,13 +68,19 @@ def run_weekly_recommendation():
         ScrapeRunner().run_all()
         logger.info("[스케줄러] ── Step 1/2: 스크랩 완료 ──\n")
 
-        # ── Step 2/2: AI 분석 → output/ai/ ──
-        logger.info("[스케줄러] ── Step 2/2: AI 분석 실행 시작 ──")
+        # ── Step 2/3: AI 분석 → output/ai/ ──
+        logger.info("[스케줄러] ── Step 2/3: AI 분석 실행 시작 ──")
         from Aidata.run_aidata import load_scrap_data, run_ai_analysis, save_ai_result
         data   = load_scrap_data()
         result = run_ai_analysis(data)
         save_ai_result(result)
-        logger.info("[스케줄러] ── Step 2/2: AI 분석 완료 ──")
+        logger.info("[스케줄러] ── Step 2/3: AI 분석 완료 ──\n")
+
+        # ── Step 3/3: DB 저장 ──
+        logger.info("[스케줄러] ── Step 3/3: DB 저장 시작 ──")
+        from save_to_db import save_to_database
+        save_to_database(result)
+        logger.info("[스케줄러] ── Step 3/3: DB 저장 완료 ──")
 
         return True
 
