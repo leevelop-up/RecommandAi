@@ -54,10 +54,18 @@ def save_to_database(ai_result: dict):
         """, (today,))
 
         # 2. 테마 저장
-        # AI 결과에서 Gemini 분석 추출
-        gemini_data = ai_result.get("ai_recommendations", {}).get("gemini", {})
-        themes_analysis = gemini_data.get("top_themes_analysis", [])
-        top_picks = gemini_data.get("top_10_picks", [])
+        # AI 결과에서 분석 추출 (Gemini 우선, 실패 시 Groq 폴백)
+        recommendations = ai_result.get("ai_recommendations", {})
+        ai_data = recommendations.get("gemini") or recommendations.get("groq") or {}
+        engine_used = ai_data.get("engine", "unknown")
+        themes_analysis = ai_data.get("top_themes_analysis", [])
+        top_picks = ai_data.get("top_10_picks", [])
+
+        if not ai_data:
+            logger.error("❌ Gemini/Groq 분석 결과 없음 — DB 저장 건너뜀")
+            return False
+
+        logger.info(f"  AI 엔진 사용: {engine_used}, 테마 수: {len(themes_analysis)}개")
 
         theme_id_map = {}  # 테마명 -> DB ID 매핑
 

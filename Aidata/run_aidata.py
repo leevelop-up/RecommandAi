@@ -127,8 +127,8 @@ def build_prompt(data: Dict, engine_name: str) -> str:
     all_stocks = kr_stocks + us_stocks
 
     if all_stocks:
-        lines.append(f"\n## 3. 상승 종목 ({len(all_stocks)}개)")
-        for s in all_stocks[:30]:
+        lines.append(f"\n## 3. 상승 종목 ({len(all_stocks)}개 중 상위 15)")
+        for s in all_stocks[:15]:
             country = s.get("country", "KR")
             cur     = "원" if country == "KR" else "USD"
             price   = s.get("current_price", 0)
@@ -149,7 +149,7 @@ def build_prompt(data: Dict, engine_name: str) -> str:
             for n in s.get("news", [])[:2]:
                 lines.append(f"  · {n.get('title', '')[:50]}")
 
-    # ── 4. 테마별 관련주 세부 정보 ────────────────────────────────
+    # ── 4. 테마별 관련주 세부 정보 (상위 5테마만) ─────────────────
     companies = details_data.get("companies", {})
     # 테마별로 그룹화
     theme_map: Dict[str, list] = {}
@@ -158,10 +158,10 @@ def build_prompt(data: Dict, engine_name: str) -> str:
             theme_map.setdefault(tn, []).append(info)
 
     if theme_map:
-        lines.append("\n## 4. 테마별 관련주 세부 정보")
-        for tn, t_stocks in theme_map.items():
+        lines.append("\n## 4. 테마별 관련주 세부 정보 (상위 5테마)")
+        for tn, t_stocks in list(theme_map.items())[:5]:
             lines.append(f"\n### {tn}")
-            for s in t_stocks[:8]:
+            for s in t_stocks[:5]:
                 lines.append(
                     f"- {s.get('name', '')}({s.get('ticker', '')}): "
                     f"가격 {s.get('current_price', 0)}, "
@@ -172,10 +172,10 @@ def build_prompt(data: Dict, engine_name: str) -> str:
     # ── 5. 시장 뉴스 ──────────────────────────────────────────────
     articles = news_data.get("articles", [])
     if articles:
-        lines.append(f"\n## 5. 주요 시장 뉴스 (총 {len(articles)}개 중 상위 20)")
-        for i, a in enumerate(articles[:20], 1):
+        lines.append(f"\n## 5. 주요 시장 뉴스 (총 {len(articles)}개 중 상위 10)")
+        for i, a in enumerate(articles[:10], 1):
             src = a.get("_source", "")
-            lines.append(f"{i}. [{src}] {a.get('title', '')[:70]}")
+            lines.append(f"{i}. [{src}] {a.get('title', '')[:60]}")
 
     # ── 응답 형식 ─────────────────────────────────────────────────
     lines.append("""
@@ -185,8 +185,8 @@ def build_prompt(data: Dict, engine_name: str) -> str:
 {
   "market_analysis": {
     "overall_sentiment": "매우 긍정적 | 긍정적 | 중립 | 부정적 | 매우 부정적",
-    "korea_outlook": "한국 시장 전망 (2-3문장)",
-    "usa_outlook": "미국 시장 전망 (2-3문장)",
+    "korea_outlook": "한국 시장 전망 (1-2문장)",
+    "usa_outlook": "미국 시장 전망 (1-2문장)",
     "key_trends": ["트렌드1", "트렌드2", "트렌드3"],
     "risks": ["리스크1", "리스크2"]
   },
@@ -194,8 +194,8 @@ def build_prompt(data: Dict, engine_name: str) -> str:
     {
       "theme": "테마명",
       "rating": "매우 강세 | 강세 | 보통 | 약세",
-      "reasoning": "분석 근거 (2-3문장)",
-      "recommended_stocks": ["종목1", "종목2", "종목3"]
+      "reasoning": "분석 근거 (1문장)",
+      "recommended_stocks": ["종목명1", "종목명2", "종목명3"]
     }
   ],
   "top_10_picks": [
@@ -206,7 +206,7 @@ def build_prompt(data: Dict, engine_name: str) -> str:
       "country": "KR | US",
       "action": "적극매수 | 매수 | 보유",
       "target_return": "10-15%",
-      "reasoning": "추천 근거 (3-4문장)",
+      "reasoning": "추천 근거 (1-2문장)",
       "entry_price": "추천 매수가",
       "target_price": "목표가",
       "stop_loss": "손절가",
@@ -217,20 +217,20 @@ def build_prompt(data: Dict, engine_name: str) -> str:
     {
       "sector": "섹터명",
       "rating": "비중확대 | 중립 | 비중축소",
-      "reasoning": "근거 (2문장)"
+      "reasoning": "근거 (1문장)"
     }
   ],
-  "risk_warning": "전체 시장 위험 요소 (3-4문장)",
-  "investment_strategy": "이번 주 투자 전략 요약 (4-5문장)"
+  "risk_warning": "전체 시장 위험 요소 (1-2문장)",
+  "investment_strategy": "이번 주 투자 전략 요약 (2-3문장)"
 }
 ```
 
 중요:
 1. 모든 분석은 제공된 실제 데이터와 뉴스를 기반으로 하세요
-2. 구체적인 숫자와 근거를 제시하세요
-3. 긍정적/부정적 측면을 균형있게 다루세요
-4. 투자 위험을 명확히 언급하세요
-5. top_10_picks는 반드시 10개를 선정하세요
+2. reasoning은 반드시 1-2문장으로 간결하게 작성하세요 (토큰 절약)
+3. top_themes_analysis는 반드시 5개 이상 선정하세요
+4. top_10_picks는 반드시 10개를 선정하세요
+5. recommended_stocks에는 종목명(한글)만 기재하세요
 """)
 
     return "\n".join(lines)
@@ -265,6 +265,7 @@ def run_ai_analysis(data: Dict) -> Dict:
                 prompt,
                 system_instruction=_SYSTEM_INSTRUCTION,
                 temperature=0.3,
+                max_tokens=8192,
             )
             if gemini_result:
                 gemini_result["engine"]      = "gemini"
@@ -290,6 +291,7 @@ def run_ai_analysis(data: Dict) -> Dict:
                     prompt,
                     system_instruction=_SYSTEM_INSTRUCTION,
                     temperature=0.3,
+                    max_tokens=8192,
                 )
                 if groq_result:
                     groq_result["engine"]      = "groq"

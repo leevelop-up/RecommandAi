@@ -76,10 +76,11 @@ def run_weekly_recommendation():
         save_ai_result(result)
         logger.info("[스케줄러] ── Step 2/3: AI 분석 완료 ──\n")
 
-        # ── Step 3/3: DB 저장 ──
+        # ── Step 3/3: DB 저장 (스크랩 데이터 직접 저장) ──
         logger.info("[스케줄러] ── Step 3/3: DB 저장 시작 ──")
-        from save_to_db import save_to_database
-        save_to_database(result)
+        from database.insert_data import DataInserter
+        inserter = DataInserter()
+        inserter.run(clear_first=False)
         logger.info("[스케줄러] ── Step 3/3: DB 저장 완료 ──")
 
         return True

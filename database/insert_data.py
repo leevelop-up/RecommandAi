@@ -93,8 +93,12 @@ class DataInserter:
             return 0.0
 
     def insert_themes(self, themes_data: Dict) -> Dict[str, int]:
-        """테마 데이터 삽입"""
+        """테마 데이터 삽입 (매일 갱신: 기존 테마 비활성화 후 INSERT/UPDATE)"""
         logger.info("\n[1/5] 테마 데이터 삽입 중...")
+
+        # 기존 테마 전체 비활성화 (오늘 새로 들어오는 것만 active)
+        self.cursor.execute("UPDATE themes SET is_active = FALSE")
+        logger.info("  기존 테마 비활성화 완료")
 
         theme_id_map = {}  # theme_code → id 매핑
         themes = themes_data.get('themes', [])
@@ -116,8 +120,19 @@ class DataInserter:
         sql = """
         INSERT INTO themes (
             theme_code, theme_name, stock_count, theme_score,
-            change_rate, daily_change, news_count, rank, is_active
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            change_rate, daily_change, news_count, rank, is_active, created_at
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+        ON DUPLICATE KEY UPDATE
+            theme_name   = VALUES(theme_name),
+            stock_count  = VALUES(stock_count),
+            theme_score  = VALUES(theme_score),
+            change_rate  = VALUES(change_rate),
+            daily_change = VALUES(daily_change),
+            news_count   = VALUES(news_count),
+            rank         = VALUES(rank),
+            is_active    = TRUE,
+            created_at   = NOW(),
+            updated_at   = NOW()
         """
 
         inserted = 0
@@ -137,9 +152,16 @@ class DataInserter:
                     change_rate, daily_change, news_count, rank, True
                 ))
 
-                # theme_code → id 매핑 저장
-                theme_id_map[theme_code] = self.cursor.lastrowid
-                inserted += 1
+                # INSERT면 lastrowid, UPDATE면 SELECT로 가져오기
+                theme_id = self.cursor.lastrowid
+                if not theme_id:
+                    self.cursor.execute("SELECT id FROM themes WHERE theme_code = %s", (theme_code,))
+                    row = self.cursor.fetchone()
+                    theme_id = row['id'] if row else None
+
+                if theme_id:
+                    theme_id_map[theme_code] = theme_id
+                    inserted += 1
 
                 if inserted % 100 == 0:
                     logger.info(f"  진행: {inserted}/{len(unique_themes)} 테마")
@@ -253,7 +275,7 @@ class DataInserter:
         return stock_ticker_set
 
     def insert_theme_stocks(self, themes_data: Dict, theme_id_map: Dict, stock_ticker_set: set):
-        """테마-종목 연결 데이터 삽입"""
+        """테마-종목 연결 데이터 삽입 (매일 갱신: 기존 삭제 후 재삽입)"""
         logger.info("\n[3/5] 테마-종목 연결 데이터 삽입 중...")
 
         sql = """
@@ -265,7 +287,6 @@ class DataInserter:
 
         inserted = 0
         skipped = 0
-        stock_id_counter = 1  # stock_id를 순차적으로 증가시킴
 
         # 중복 제거를 위한 theme_code 필터
         seen_codes = set()
@@ -282,6 +303,11 @@ class DataInserter:
 
             if not theme_id:
                 continue
+
+            # 해당 테마의 기존 종목 삭제 후 재삽입
+            self.cursor.execute("DELETE FROM theme_stocks WHERE theme_id = %s", (theme_id,))
+
+            stock_id_counter = 1  # 테마별로 stock_id 초기화
 
             tier_map = {
                 'tier1_stocks': 1,
@@ -303,9 +329,10 @@ class DataInserter:
                             skipped += 1
                             continue
 
-                        # stock_id는 순차적으로 증가하는 값 사용 (UNIQUE 제약 회피)
+                        # stock_id = theme_id * 10000 + counter (theme 내 유니크 보장)
+                        stock_id = theme_id * 10000 + stock_id_counter
                         self.cursor.execute(sql, (
-                            theme_id, stock_id_counter, stock_code, stock_name, tier_num,
+                            theme_id, stock_id, stock_code, stock_name, tier_num,
                             stock.get('price', 0), stock.get('change_rate', '0%')
                         ))
 
@@ -313,7 +340,6 @@ class DataInserter:
                         inserted += 1
 
                     except pymysql.IntegrityError as e:
-                        # 중복 데이터 무시
                         logger.debug(f"  중복 스킵: {stock_name} - {e}")
                     except Exception as e:
                         logger.error(f"  연결 데이터 삽입 실패 ({stock_name}): {e}")
