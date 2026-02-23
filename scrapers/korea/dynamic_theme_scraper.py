@@ -49,6 +49,7 @@ class DynamicThemeScraper:
             테마 목록
         """
         all_themes = []
+        seen_codes = set()
         page = 1
 
         # pages가 지정되지 않으면 자동으로 모든 페이지 크롤링
@@ -70,6 +71,7 @@ class DynamicThemeScraper:
                         break
 
                     page_themes = []
+                    new_count = 0
                     for link in links:
                         href = link.get("href", "")
                         code_match = re.search(r"no=(\d+)", href)
@@ -90,10 +92,20 @@ class DynamicThemeScraper:
                                 "code": theme_code,
                                 "change_rate": change_rate,
                             })
+                            if theme_code not in seen_codes:
+                                new_count += 1
+
+                    # 이 페이지의 모든 테마가 이미 수집됐으면 루프 종료 (페이지 반복 감지)
+                    if page_themes and new_count == 0:
+                        logger.info(f"페이지 {page}: 새 테마 없음 - 크롤링 종료 (중복 페이지)")
+                        break
 
                     if page_themes:
-                        all_themes.extend(page_themes)
-                        logger.info(f"페이지 {page}: {len(page_themes)}개 테마 수집 (누적: {len(all_themes)}개)")
+                        for t in page_themes:
+                            if t["code"] not in seen_codes:
+                                seen_codes.add(t["code"])
+                                all_themes.append(t)
+                        logger.info(f"페이지 {page}: {new_count}개 신규 테마 수집 (누적: {len(all_themes)}개)")
                     else:
                         break
 
@@ -113,12 +125,18 @@ class DynamicThemeScraper:
 
                 try:
                     links = soup.select('td a[href*="type=theme"]')
+                    new_count = 0
                     for link in links:
                         href = link.get("href", "")
                         code_match = re.search(r"no=(\d+)", href)
                         if code_match:
                             theme_name = link.text.strip()
                             theme_code = code_match.group(1)
+
+                            if theme_code in seen_codes:
+                                continue
+                            seen_codes.add(theme_code)
+                            new_count += 1
 
                             # 등락률 찾기
                             parent_td = link.find_parent("td")
@@ -133,6 +151,10 @@ class DynamicThemeScraper:
                                 "code": theme_code,
                                 "change_rate": change_rate,
                             })
+
+                    if new_count == 0:
+                        logger.info(f"페이지 {page}: 새 테마 없음 - 크롤링 종료")
+                        break
 
                 except Exception as e:
                     logger.error(f"테마 목록 파싱 실패 (page {page}): {e}")

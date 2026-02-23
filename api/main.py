@@ -322,14 +322,17 @@ async def get_theme_detail(theme_id: int):
             """, (theme_id,))
             tier3_stocks = [ThemeStock(**row) for row in cursor.fetchall()]
 
-            # 관련 뉴스 조회
+            # 관련 뉴스 조회 (종목 연결 + 테마명 키워드 검색)
+            theme_name = theme_data.get("theme_name", "")
             cursor.execute("""
-                SELECT n.* FROM news n
-                INNER JOIN theme_stocks ts ON n.ticker = ts.stock_code
-                WHERE ts.theme_id = %s
+                SELECT DISTINCT n.* FROM news n
+                WHERE n.ticker IN (
+                    SELECT stock_code FROM theme_stocks WHERE theme_id = %s
+                )
+                OR n.title LIKE %s
                 ORDER BY n.created_at DESC
                 LIMIT 10
-            """, (theme_id,))
+            """, (theme_id, f"%{theme_name}%"))
             news = [NewsItem(**row) for row in cursor.fetchall()]
 
             cursor.close()
