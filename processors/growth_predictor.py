@@ -423,6 +423,8 @@ class GrowthPredictor:
 
             result["korea_picks"] = []
             for i, c in enumerate(kr[:7], 1):
+                conf = self._score_to_confidence(c["growth_score"])
+                entry, stop = self._calc_entry_stop(c["current_price"], c["change_rate"], conf)
                 result["korea_picks"].append({
                     "rank": i,
                     "ticker": c["ticker"],
@@ -430,14 +432,18 @@ class GrowthPredictor:
                     "current_price": c["current_price"],
                     "change_rate": c["change_rate"],
                     "predicted_return": self._estimate_return(c["growth_score"]),
-                    "confidence": self._score_to_confidence(c["growth_score"]),
-                    "timeframe": "1-5일",
+                    "confidence": conf,
+                    "timeframe": self._score_to_timeframe(c["growth_score"]),
                     "reasoning": ", ".join(c["signals"][:4]) if c["signals"] else "종합 분석 기반",
+                    "entry_point": entry,
+                    "stop_loss": stop,
                     "growth_score": c["growth_score"],
                 })
 
             result["usa_picks"] = []
             for i, c in enumerate(us[:7], 1):
+                conf = self._score_to_confidence(c["growth_score"])
+                entry, stop = self._calc_entry_stop(c["current_price"], c["change_rate"], conf)
                 result["usa_picks"].append({
                     "rank": i,
                     "ticker": c["ticker"],
@@ -445,9 +451,11 @@ class GrowthPredictor:
                     "current_price": c["current_price"],
                     "change_rate": c["change_rate"],
                     "predicted_return": self._estimate_return(c["growth_score"]),
-                    "confidence": self._score_to_confidence(c["growth_score"]),
-                    "timeframe": "1-5일",
+                    "confidence": conf,
+                    "timeframe": self._score_to_timeframe(c["growth_score"]),
                     "reasoning": ", ".join(c["signals"][:4]) if c["signals"] else "종합 분석 기반",
+                    "entry_point": entry,
+                    "stop_loss": stop,
                     "growth_score": c["growth_score"],
                 })
 
@@ -527,6 +535,35 @@ class GrowthPredictor:
         elif score >= 40:
             return "medium"
         return "low"
+
+    @staticmethod
+    def _score_to_timeframe(score: int) -> str:
+        if score >= 60:
+            return "1-2일"
+        elif score >= 45:
+            return "2-3일"
+        else:
+            return "3-5일"
+
+    @staticmethod
+    def _calc_entry_stop(price: float, change_rate: float, confidence: str) -> tuple:
+        """진입가 / 손절가 계산"""
+        if not price or price <= 0:
+            return "시장가 진입", "원칙 손절"
+
+        # 진입가: 이미 상승 중이면 눌림목 대기, 아니면 현재가 근처
+        if change_rate >= 3.0:
+            entry = price * 0.98   # 2% 눌림목 대기
+        elif change_rate >= 1.0:
+            entry = price * 0.99
+        else:
+            entry = price * 1.01   # 소폭 상승 후 진입
+
+        # 손절가: confidence에 따라 손절 폭 조정
+        stop_pct = {"high": 0.07, "medium": 0.05, "low": 0.03}.get(confidence, 0.05)
+        stop = price * (1 - stop_pct)
+
+        return f"{entry:,.0f}원", f"{stop:,.0f}원 (-{stop_pct*100:.0f}%)"
 
     @staticmethod
     def _analyze_news_sentiment(news: List[Dict], lang: str = "ko") -> float:

@@ -107,6 +107,7 @@ class DataAggregator:
             logger.debug(f"  {name}({ticker}) 수집")
             price = _safe(lambda t=ticker: self.naver.get_realtime_price(t), {})
             fund = _safe(lambda t=ticker: self.krx.get_fundamental(t), {})
+            cap = _safe(lambda t=ticker: self.krx.get_market_cap(t), {})
             news = _safe(lambda n=name: self.news_scraper.search(f"{n} 주식", max_results=5), [])
 
             stocks.append({
@@ -114,7 +115,7 @@ class DataAggregator:
                 "name": name,
                 "country": "KR",
                 "price": price,
-                "fundamental": fund,
+                "fundamental": {**fund, "market_cap": cap.get("market_cap", 0)},
                 "news": news,
             })
 
@@ -200,14 +201,26 @@ class DataAggregator:
         for kw in self.THEME_KEYWORDS:
             matched = _safe(lambda k=kw: self.theme_scraper.search_theme(k), [])
             if matched:
-                stocks = _safe(
-                    lambda c=matched[0]["code"]: self.theme_scraper.get_theme_stocks(c), []
+                tiered = _safe(
+                    lambda k=kw: self.theme_scraper.find_theme_stocks_tiered(k),
+                    {"tier1": [], "tier2": [], "tier3": []}
+                )
+                tier1 = tiered.get("tier1", [])
+                tier2 = tiered.get("tier2", [])
+                tier3 = tiered.get("tier3", [])
+                news = _safe(
+                    lambda k=kw: self.news_scraper.search(f"{k} 주식 테마", max_results=5), []
                 )
                 keyword_themes[kw] = {
                     "theme_name": matched[0]["name"],
                     "change_rate": matched[0].get("change_rate", ""),
-                    "stock_count": len(stocks),
-                    "top_stocks": [s["name"] for s in stocks[:5]],
+                    "stock_count": len(tier1) + len(tier2) + len(tier3),
+                    "top_stocks": [s["name"] for s in tier1[:5]],
+                    "tier1_stocks": [s["name"] for s in tier1],
+                    "tier2_stocks": [s["name"] for s in tier2],
+                    "tier3_stocks": [s["name"] for s in tier3],
+                    "news_count": len(news),
+                    "news": news,
                 }
 
         return {

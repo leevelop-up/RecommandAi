@@ -4,7 +4,7 @@ RecommandAi FastAPI 서버
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 from loguru import logger
 
 from api.database import get_db, test_connection
@@ -13,6 +13,12 @@ from api.models import (
     NewsItem, NewsResponse,
     Stock, ThemeStock
 )
+from api.recommendations import router as recommendations_router
+from scrapers.korea.krx_scraper import KRXScraper
+from scrapers.usa.yahoo_scraper import YahooFinanceScraper
+
+_krx = KRXScraper()
+_yahoo = YahooFinanceScraper()
 
 # FastAPI 앱 생성
 app = FastAPI(
@@ -29,6 +35,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 퀀트 ML 기반 추천 라우터 등록
+app.include_router(recommendations_router, prefix="/api/recommendations")
 
 
 @app.on_event("startup")
@@ -58,141 +67,6 @@ async def health_check():
         "timestamp": datetime.now().isoformat()
     }
 
-
-@app.get("/api/recommendations/today")
-async def get_today_recommendations(limit: int = 10):
-    """
-    오늘의 AI 추천 종목
-    - 높은 점수의 테마에 속한 종목들을 추천
-    """
-    try:
-        with get_db() as conn:
-            cursor = conn.cursor()
-
-            # 상위 테마의 Tier 1 종목들을 추천
-            sql = """
-            SELECT DISTINCT
-                ts.stock_code,
-                COALESCE(s.kr_name, ts.stock_name) as stock_name,
-                ts.stock_price,
-                ts.stock_change_rate,
-                t.theme_name,
-                t.theme_score,
-                ts.tier
-            FROM theme_stocks ts
-            INNER JOIN themes t ON ts.theme_id = t.id
-            LEFT JOIN stocks s ON ts.stock_code = s.ticker
-            WHERE t.is_active = TRUE AND ts.tier = 1
-            ORDER BY t.theme_score DESC, ts.stock_price DESC
-            LIMIT %s
-            """
-            cursor.execute(sql, (limit,))
-            recommendations = cursor.fetchall()
-            cursor.close()
-
-            return {
-                "recommendations": recommendations,
-                "total": len(recommendations),
-                "generated_at": datetime.now().isoformat()
-            }
-
-    except Exception as e:
-        logger.error(f"추천 종목 조회 실패: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/recommendations/growth")
-async def get_growth_predictions(limit: int = 10):
-    """
-    급등 예측 종목
-    - daily_change가 높은 테마의 종목들
-    """
-    try:
-        with get_db() as conn:
-            cursor = conn.cursor()
-
-            sql = """
-            SELECT DISTINCT
-                ts.stock_code,
-                COALESCE(s.kr_name, ts.stock_name) as stock_name,
-                ts.stock_price,
-                ts.stock_change_rate,
-                t.theme_name,
-                t.theme_score,
-                t.daily_change,
-                ts.tier
-            FROM theme_stocks ts
-            INNER JOIN themes t ON ts.theme_id = t.id
-            LEFT JOIN stocks s ON ts.stock_code = s.ticker
-            WHERE t.is_active = TRUE AND t.daily_change > 0
-            ORDER BY t.daily_change DESC, t.theme_score DESC
-            LIMIT %s
-            """
-            cursor.execute(sql, (limit,))
-            predictions = cursor.fetchall()
-            cursor.close()
-
-            return {
-                "predictions": predictions,
-                "total": len(predictions),
-                "generated_at": datetime.now().isoformat()
-            }
-
-    except Exception as e:
-        logger.error(f"급등 예측 조회 실패: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/recommendations/summary")
-async def get_market_summary():
-    """
-    시장 요약 정보
-    """
-    try:
-        with get_db() as conn:
-            cursor = conn.cursor()
-
-            # 전체 테마 통계
-            cursor.execute("""
-                SELECT
-                    COUNT(*) as total_themes,
-                    SUM(CASE WHEN daily_change > 0 THEN 1 ELSE 0 END) as rising_themes,
-                    SUM(CASE WHEN daily_change < 0 THEN 1 ELSE 0 END) as falling_themes,
-                    AVG(theme_score) as avg_score
-                FROM themes
-                WHERE is_active = TRUE
-            """)
-            theme_stats = cursor.fetchone()
-
-            # 전체 종목 수
-            cursor.execute("SELECT COUNT(DISTINCT stock_code) as total_stocks FROM theme_stocks")
-            stock_stats = cursor.fetchone()
-
-            # 전체 뉴스 수
-            cursor.execute("SELECT COUNT(*) as total_news FROM news")
-            news_stats = cursor.fetchone()
-
-            cursor.close()
-
-            return {
-                "themes": {
-                    "total": theme_stats['total_themes'],
-                    "rising": theme_stats['rising_themes'],
-                    "falling": theme_stats['falling_themes'],
-                    "average_score": round(theme_stats['avg_score'], 2) if theme_stats['avg_score'] else 0
-                },
-                "stocks": {
-                    "total": stock_stats['total_stocks']
-                },
-                "news": {
-                    "total": news_stats['total_news']
-                },
-                "updated_at": datetime.now().isoformat()
-            }
-
-    except Exception as e:
-        logger.error(f"시장 요약 조회 실패: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/themes", response_model=ThemesResponse)
@@ -464,6 +338,63 @@ async def get_stock_detail(ticker: str):
         raise
     except Exception as e:
         logger.error(f"종목 상세 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/stocks/{ticker}/chart")
+async def get_stock_chart(ticker: str, period: str = "6m"):
+    """
+    종목 차트 데이터 (과거 주가)
+
+    Args:
+        ticker: 종목 코드 (한국: 숫자 6자리, 미국: 알파벳)
+        period: 기간 (1m, 3m, 6m, 1y)
+    """
+    period_days = {"1m": 30, "3m": 90, "6m": 180, "1y": 365}
+    days = period_days.get(period, 180)
+
+    is_korean = ticker.isdigit()
+
+    try:
+        if is_korean:
+            end = datetime.now()
+            start = end - timedelta(days=days)
+            df = _krx.get_ohlcv(
+                ticker,
+                start_date=start.strftime("%Y%m%d"),
+                end_date=end.strftime("%Y%m%d"),
+            )
+            if df.empty:
+                raise HTTPException(status_code=404, detail="주가 데이터 없음")
+            data = [
+                {"date": str(row["date"])[:10], "price": int(row["close"])}
+                for _, row in df.iterrows()
+            ]
+        else:
+            yf_period = {"1m": "1mo", "3m": "3mo", "6m": "6mo", "1y": "1y"}.get(period, "6mo")
+            df = _yahoo.get_historical_data(ticker, period=yf_period)
+            if df.empty:
+                raise HTTPException(status_code=404, detail="주가 데이터 없음")
+            close_col = next((c for c in df.columns if "close" in c.lower()), None)
+            date_col = next((c for c in df.columns if "date" in c.lower()), None)
+            if not close_col or not date_col:
+                raise HTTPException(status_code=500, detail="데이터 형식 오류")
+            data = [
+                {"date": str(row[date_col])[:10], "price": round(float(row[close_col]), 2)}
+                for _, row in df.iterrows()
+            ]
+
+        return {
+            "ticker": ticker,
+            "period": period,
+            "data": data,
+            "generatedAt": datetime.now().isoformat(),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"차트 데이터 조회 실패 ({ticker}): {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

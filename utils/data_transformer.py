@@ -316,41 +316,216 @@ def transform_growth_response(growth_result: Dict) -> Dict:
     }
 
 
-def transform_themes_response(sector_analysis: List[Dict]) -> Dict:
+def transform_quant_to_stock_interface(quant: dict) -> dict:
+    """
+    퀀트 ML 분석 결과를 Stock 인터페이스로 변환
+
+    Args:
+        quant: QuantStrategy.analyze() 반환값
+
+    Returns:
+        Stock 인터페이스 형식 딕셔너리
+    """
+    ticker = quant.get("ticker", "")
+    name = quant.get("ticker_name", "")
+    p_up = quant.get("p_up", 0.5)
+    exp_ret = quant.get("expected_return", 0.0)
+    decision = quant.get("decision", "HOLD")
+    fund = quant.get("fundamentals", {})
+    sent = quant.get("sentiment", {})
+
+    action_map = {"BUY": "Buy", "HOLD": "Hold", "SELL": "Sell"}
+    country = "KR" if ticker.isdigit() else "US"
+    score = int(p_up * 100)
+
+    return {
+        "id": ticker,
+        "symbol": name,
+        "name": get_english_name(ticker, name),
+        "price": 0,           # PriceEnricher가 실시간으로 채움
+        "change": 0,
+        "changePercent": 0,
+        "marketCap": "N/A",
+        "peRatio": round(float(fund.get("PER") or 0), 1),
+        "dividendYield": 0,
+        "sector": quant.get("market", "KOSPI"),
+        "score": score,
+        "recommendation": action_map.get(decision, "Hold"),
+        "analystRating": convert_score_to_rating(score),
+        "country": country,
+        "reasoning": (
+            f"ML P(상승)={p_up:.1%}, 기대수익={exp_ret*100:.2f}%, "
+            f"RSI={quant.get('rsi', 0):.1f}, "
+            f"감성={sent.get('sentiment_score', 0):.2f}"
+        ),
+        # 퀀트 전용 필드
+        "pUp": round(p_up, 4),
+        "expectedReturn": round(exp_ret, 6),
+        "rsi": round(quant.get("rsi", 0), 2),
+        "ma20Ratio": round(quant.get("ma20_ratio", 1.0), 4),
+        "sentimentScore": round(sent.get("sentiment_score", 0), 3),
+        "selectedModel": quant.get("selected_model", ""),
+    }
+
+
+def transform_quant_recommendations_response(quant_result: dict) -> dict:
+    """
+    퀀트 추천 결과를 /recommendations/today 응답 형식으로 변환
+
+    Args:
+        quant_result: run_quant_recommendations.py 저장 파일
+
+    Returns:
+        Frontend용 추천 응답 (transform_recommendations_response와 동일 구조)
+    """
+    recs = quant_result.get("recommendations", [])  # BUY 종목
+    all_results = quant_result.get("all_results", [])
+
+    # BUY가 없으면 P(up) 높은 순으로 전체 결과 사용 (HOLD 포함)
+    if not recs and all_results:
+        recs = sorted(all_results, key=lambda x: x.get("p_up", 0), reverse=True)
+
+    recommended_stocks = [transform_quant_to_stock_interface(r) for r in recs[:20]]
+
+    return {
+        "generatedAt": quant_result.get("generated_at", ""),
+        "engine": "quant_ml",
+        "marketOverview": {
+            "summary": (
+                f"퀀트 ML 분석: {quant_result.get('total_analyzed', 0)}개 종목 중 "
+                f"BUY {quant_result.get('buy_count', 0)}개 / "
+                f"HOLD {quant_result.get('hold_count', 0)}개 / "
+                f"SELL {quant_result.get('sell_count', 0)}개"
+            )
+        },
+        "recommendedStocks": recommended_stocks,
+        "themeStocks": recommended_stocks[:6],
+        "topPicks": recommended_stocks[:5],
+        "sectorAnalysis": [],
+        "riskAssessment": {},
+    }
+
+
+def transform_quant_growth_response(quant_result: dict) -> dict:
+    """
+    퀀트 추천 결과를 /recommendations/growth 응답 형식으로 변환
+
+    Args:
+        quant_result: run_quant_recommendations.py 저장 파일
+
+    Returns:
+        Frontend용 급등 예측 응답 (transform_growth_response와 동일 구조)
+    """
+    candidates = quant_result.get("growth_candidates", [])
+
+    # BUY가 없으면 E[R] 높은 순으로 전체 결과 사용 (HOLD 포함)
+    if not candidates:
+        all_results = quant_result.get("all_results", [])
+        candidates = sorted(all_results, key=lambda x: x.get("expected_return", 0), reverse=True)
+
+    growth_stocks = []
+
+    for rank, quant in enumerate(candidates[:10], start=1):
+        stock = transform_quant_to_stock_interface(quant)
+        exp_ret = quant.get("expected_return", 0)
+        p_up = quant.get("p_up", 0.5)
+
+        stock["predictedReturn"] = f"+{exp_ret*100:.2f}%" if exp_ret > 0 else f"{exp_ret*100:.2f}%"
+        stock["confidence"] = "높음" if p_up >= 0.70 else ("중간" if p_up >= 0.60 else "낮음")
+        stock["timeframe"] = "1~3일"
+        stock["entryPoint"] = ""
+        stock["stopLoss"] = ""
+        stock["rank"] = rank
+        growth_stocks.append(stock)
+
+    return {
+        "generatedAt": quant_result.get("generated_at", ""),
+        "engine": "quant_ml",
+        "predictionSummary": (
+            f"ML 기대수익 기준 상위 {len(growth_stocks)}개 종목 선별 "
+            f"(총 {quant_result.get('total_analyzed', 0)}개 분석)"
+        ),
+        "growthStocks": growth_stocks,
+        "hotThemes": [],
+        "riskWarning": "ML 예측은 과거 데이터 기반이며 미래 수익을 보장하지 않습니다.",
+    }
+
+
+def _parse_change_rate(value) -> float:
+    """문자열 또는 숫자에서 등락률(float) 추출"""
+    import re
+    if isinstance(value, (int, float)):
+        return float(value)
+    if value:
+        nums = re.findall(r'-?\d+\.?\d*', str(value))
+        if nums:
+            return float(nums[0])
+    return 0.0
+
+
+def _outlook_to_trend(outlook: str, change_rate: float, score_change: float) -> str:
+    """outlook + change_rate + score_change → hot / rising / stable / falling"""
+    if outlook == "positive" or change_rate > 3 or score_change > 15:
+        return "hot"
+    elif change_rate > 0.5 or score_change > 5:
+        return "rising"
+    elif outlook == "negative" or change_rate < -3 or score_change < -15:
+        return "falling"
+    else:
+        return "stable"
+
+
+def transform_themes_response(sector_analysis: List[Dict], previous_scores: Optional[Dict] = None) -> Dict:
     """
     섹터 분석을 Theme 형식으로 변환
 
     Args:
         sector_analysis: AI의 섹터 분석 결과
+        previous_scores: {sector_name: score} 이전 점수 (optional)
 
     Returns:
         Frontend용 테마 목록
     """
     themes = []
+    prev = previous_scores or {}
 
     for sector in sector_analysis:
         sector_name = sector.get("sector", "")
         outlook = sector.get("outlook", "neutral")
 
-        # Outlook을 점수로 변환
-        score_map = {"positive": 85, "neutral": 50, "negative": 25}
+        score_map = {"positive": 85, "긍정적": 85, "neutral": 50,
+                     "중립(소폭 상승)": 55, "중립(소폭 하락)": 45,
+                     "negative": 25, "부정적": 25}
         score = score_map.get(outlook, 50)
 
-        # Trend 결정
-        trend = "hot" if outlook == "positive" else "stable" if outlook == "neutral" else "falling"
+        previous_score = prev.get(sector_name, score)
+        score_change = score - previous_score
+        change_percent = round(score_change / previous_score * 100, 1) if previous_score else 0.0
+
+        change_rate = _parse_change_rate(sector.get("change_rate", 0))
+        trend = _outlook_to_trend(outlook, change_rate, score_change)
+
+        momentum_map = {"hot": "강세", "rising": "약강세", "stable": "중립", "falling": "약세"}
+        signal_map   = {"hot": "매수", "rising": "관심",   "stable": "관망",  "falling": "매도"}
 
         themes.append({
             "id": sector_name,
             "name": sector_name,
             "score": score,
+            "previousScore": previous_score,
+            "changePercent": change_percent,
             "trend": trend,
             "outlook": outlook,
             "reasoning": sector.get("reasoning", ""),
-            "stockCount": len(sector.get("top_stocks", [])),
+            "stockCount": sector.get("stock_count", len(sector.get("top_stocks", []))),
             "topStocks": sector.get("top_stocks", [])[:5],
+            "category": sector.get("category", "기타"),
+            "avgReturn": round(change_rate, 2),
+            "momentum": momentum_map.get(trend, "중립"),
+            "signal": signal_map.get(trend, "관망"),
+            "newsCount": sector.get("news_count", 0),
+            "news": sector.get("news", [])[:5],
         })
 
-    # 점수순 정렬
     themes.sort(key=lambda x: x["score"], reverse=True)
-
     return {"themes": themes}

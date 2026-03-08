@@ -175,7 +175,7 @@ class KRXScraper:
                     "per": float(row.get("PER", 0)),
                     "pbr": float(row.get("PBR", 0)),
                     "eps": float(row.get("EPS", 0)),
-                    "div": float(row.get("DIV", 0)),
+                    "div_yield": float(row.get("DIV", 0)),
                     "dps": float(row.get("DPS", 0)),
                 }
             return {}

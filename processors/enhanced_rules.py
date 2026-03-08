@@ -151,6 +151,8 @@ class EnhancedRuleEngine:
                 "per": fund.get("per", 0),
                 "pbr": fund.get("pbr", 0),
                 "eps": fund.get("eps", 0),
+                "div_yield": fund.get("div_yield", 0),
+                "market_cap": fund.get("market_cap", 0),
             },
             "news_sentiment": sentiment,
         }
@@ -570,10 +572,16 @@ class EnhancedRuleEngine:
             results.append({
                 "sector": kw,
                 "theme_name": info.get("theme_name", kw),
-                "change_rate": rate_str,
+                "category": "",
+                "change_rate": rate,
                 "outlook": outlook,
                 "stock_count": info.get("stock_count", 0),
                 "top_stocks": info.get("top_stocks", []),
+                "tier1_stocks": info.get("tier1_stocks", []),
+                "tier2_stocks": info.get("tier2_stocks", []),
+                "tier3_stocks": info.get("tier3_stocks", []),
+                "news_count": info.get("news_count", 0),
+                "news": info.get("news", []),
                 "reasoning": f"{kw} 테마 등락률 {rate_str}, {info.get('stock_count', 0)}개 종목 포함",
             })
 

@@ -37,8 +37,10 @@ def build_korea_stock_prompt(data: Dict) -> str:
             lines.append(f"  현재가: {p.get('current_price', 'N/A')}원")
             lines.append(f"  등락률: {p.get('change_rate', 'N/A')}%")
             lines.append(f"  거래량: {p.get('volume', 'N/A')}")
+            cap = f.get("market_cap", 0)
+            cap_str = f"{cap / 1e12:.1f}조원" if cap >= 1e12 else (f"{cap / 1e8:.0f}억원" if cap >= 1e8 else "N/A")
             lines.append(f"  PER: {f.get('per', 'N/A')}, PBR: {f.get('pbr', 'N/A')}")
-            lines.append(f"  EPS: {f.get('eps', 'N/A')}, 배당률: {f.get('div_yield', 'N/A')}%")
+            lines.append(f"  EPS: {f.get('eps', 'N/A')}, 배당률: {f.get('div_yield', 'N/A')}%, 시총: {cap_str}")
 
             news = s.get("news", [])
             if news:
@@ -70,7 +72,9 @@ def build_korea_stock_prompt(data: Dict) -> str:
       "reasoning": "추천 근거 (2-3문장)",
       "risk_factors": ["리스크1", "리스크2"],
       "catalysts": ["촉매1", "촉매2"],
-      "target_return": "예상 수익률 범위"
+      "target_return": "예상 수익률 범위",
+      "market_cap": 시가총액(숫자, 원 단위),
+      "div_yield": 배당수익률(숫자, %)
     }
   ]
 }
@@ -162,10 +166,13 @@ def build_sector_theme_prompt(data: Dict) -> str:
     if kw_themes:
         lines.append("\n== 주요 키워드 테마 ==")
         for kw, info in kw_themes.items():
-            lines.append(f"  {kw}: {info.get('theme_name', '')} ({info.get('change_rate', '')})")
+            news_cnt = info.get("news_count", 0)
+            lines.append(f"  {kw}: {info.get('theme_name', '')} ({info.get('change_rate', '')}) 관련뉴스:{news_cnt}건")
             top = info.get("top_stocks", [])
             if top:
                 lines.append(f"    주요종목: {', '.join(top)}")
+            for n in info.get("news", [])[:3]:
+                lines.append(f"    뉴스: {n.get('title', '')[:50]}")
 
     # 미국 섹터
     usa_stocks = data.get("usa_stocks", [])
@@ -195,7 +202,10 @@ def build_sector_theme_prompt(data: Dict) -> str:
   "sector_analysis": [
     {
       "sector": "섹터/테마명",
+      "category": "이 테마의 대분류 (IT/에너지/바이오 등 자유롭게 판단)",
       "outlook": "positive | neutral | negative",
+      "change_rate": 0.0,
+      "news_count": 0,
       "reasoning": "분석 근거 (2-3문장)",
       "top_stocks": ["종목1", "종목2"]
     }
