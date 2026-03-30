@@ -201,18 +201,28 @@ class DynamicThemeScraper:
                         href = link.get("href", "")
                         ticker_match = re.search(r"code=(\d+)", href)
                         if ticker_match:
-                            ticker = ticker_match.group(1)
+                            # KRX 종목코드는 6자리 — 짧으면 zero-pad
+                            ticker = ticker_match.group(1).zfill(6)
                             name = link.text.strip()
 
                             # 현재가
-                            price_text = cols[1].text.strip().replace(",", "")
-                            price = int(price_text) if price_text.isdigit() else 0
+                            price_text = re.sub(r"[^\d]", "", cols[1].text)
+                            price = int(price_text) if price_text else 0
 
-                            # 전일비
-                            change_text = cols[2].text.strip().replace(",", "")
+                            # 전일비 — "상승\n3,650" / "하락\n650" → 숫자만 추출
+                            change_raw = cols[2].text.strip()
+                            change_nums = re.findall(r"[\d,]+", change_raw)
+                            change_text = change_nums[0].replace(",", "") if change_nums else "0"
+                            # 부호 판별 (하락이면 음수)
+                            if "하락" in change_raw or "▼" in change_raw:
+                                change_text = "-" + change_text
 
-                            # 등락률
-                            rate_text = cols[3].text.strip()
+                            # 등락률 — 공백/개행 제거 후 숫자+부호+% 만 남김
+                            rate_raw = cols[3].text.strip()
+                            rate_match = re.search(r"[-+]?\d+\.?\d*", rate_raw)
+                            rate_text = (rate_match.group(0) + "%") if rate_match else "0%"
+                            if ("하락" in rate_raw or "▼" in rate_raw) and not rate_text.startswith("-"):
+                                rate_text = "-" + rate_text
 
                             stocks.append({
                                 "ticker": ticker,

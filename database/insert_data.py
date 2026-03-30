@@ -324,16 +324,26 @@ class DataInserter:
                         if not stock_code:
                             continue
 
+                        # KRX 6자리 코드로 정규화
+                        stock_code = str(stock_code).zfill(6)
+
                         # stock_code가 stocks 테이블에 있는지 확인
                         if stock_code not in stock_ticker_set:
                             skipped += 1
                             continue
 
+                        # change_rate 정규화 — 깨진 HTML 텍스트 방지
+                        raw_rate = str(stock.get('change_rate', '0%'))
+                        rate_match = re.search(r'[-+]?\d+\.?\d*', raw_rate)
+                        clean_rate = (rate_match.group(0) + '%') if rate_match else '0%'
+                        if ('하락' in raw_rate or '▼' in raw_rate) and not clean_rate.startswith('-'):
+                            clean_rate = '-' + clean_rate
+
                         # stock_id = theme_id * 10000 + counter (theme 내 유니크 보장)
                         stock_id = theme_id * 10000 + stock_id_counter
                         self.cursor.execute(sql, (
                             theme_id, stock_id, stock_code, stock_name, tier_num,
-                            stock.get('price', 0), stock.get('change_rate', '0%')
+                            stock.get('price', 0), clean_rate
                         ))
 
                         stock_id_counter += 1
