@@ -128,10 +128,17 @@ def get_today_recommendations():
     logger.info("[API] 퀀트 데이터 없음 → AI 추천 fallback")
     latest_file = get_latest_file("ai_recommendation_*.json")
     if not latest_file:
-        raise HTTPException(
-            status_code=404,
-            detail="추천 데이터가 없습니다. run_quant_recommendations.py 또는 AI 분석을 실행해주세요."
-        )
+        logger.warning("[API] AI 추천 파일 없음 → 빈 응답 반환")
+        return {
+            "generatedAt": "",
+            "engine": "none",
+            "marketOverview": {},
+            "recommendedStocks": [],
+            "themeStocks": [],
+            "topPicks": [],
+            "sectorAnalysis": [],
+            "riskAssessment": {},
+        }
 
     ai_result = load_json_file(latest_file)
     try:
@@ -166,10 +173,15 @@ def get_growth_predictions():
     logger.info("[API] 퀀트 데이터 없음 → AI 급등 예측 fallback")
     latest_file = get_latest_file("growth_prediction_*.json")
     if not latest_file:
-        raise HTTPException(
-            status_code=404,
-            detail="급등 예측 데이터가 없습니다. run_quant_recommendations.py 또는 AI 분석을 실행해주세요."
-        )
+        logger.warning("[API] 급등 예측 파일 없음 → 빈 응답 반환")
+        return {
+            "generatedAt": "",
+            "engine": "none",
+            "predictionSummary": "",
+            "growthStocks": [],
+            "hotThemes": [],
+            "riskWarning": "",
+        }
 
     growth_result = load_json_file(latest_file)
     try:
